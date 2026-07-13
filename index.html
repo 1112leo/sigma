@@ -1,0 +1,766 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#070b14" />
+  <meta name="description" content="카드 숫자 맞히기에 숨어 있는 이진법 원리를 직접 조작하며 이해하는 체험형 웹페이지" />
+  <title>Binary Lab — 숫자 맞히기의 비밀</title>
+  <style>
+    :root{
+      --bg:#070b14;
+      --surface:#0d1424;
+      --surface-2:#111b30;
+      --surface-3:#151f37;
+      --text:#f7f9ff;
+      --muted:#aeb8cf;
+      --line:rgba(255,255,255,.11);
+      --purple:#7c5cff;
+      --cyan:#25d9ff;
+      --green:#63f5b4;
+      --yellow:#ffd66b;
+      --red:#ff7b91;
+      --shadow:0 28px 90px rgba(0,0,0,.42);
+      --radius:26px;
+    }
+
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{
+      margin:0;
+      min-height:100vh;
+      color:var(--text);
+      background:
+        radial-gradient(circle at 8% 5%,rgba(124,92,255,.24),transparent 28%),
+        radial-gradient(circle at 92% 18%,rgba(37,217,255,.12),transparent 24%),
+        radial-gradient(circle at 70% 95%,rgba(99,245,180,.10),transparent 25%),
+        var(--bg);
+      font-family:Pretendard,"Noto Sans KR",Apple SD Gothic Neo,system-ui,-apple-system,sans-serif;
+      line-height:1.5;
+    }
+
+    button,input{font:inherit}
+    button{touch-action:manipulation}
+    a{color:inherit}
+
+    .shell{
+      width:min(100% - 28px,1040px);
+      margin:0 auto;
+      padding:24px 0 64px;
+    }
+
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:16px;
+      margin-bottom:18px;
+    }
+
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      font-weight:900;
+      letter-spacing:-.03em;
+    }
+
+    .brand-mark{
+      width:34px;height:34px;border-radius:11px;
+      display:grid;place-items:center;
+      background:linear-gradient(135deg,var(--purple),var(--cyan));
+      box-shadow:0 0 28px rgba(37,217,255,.18);
+      color:#06101a;
+      font-weight:1000;
+    }
+
+    .club{
+      color:var(--muted);
+      font-size:12px;
+      font-weight:750;
+    }
+
+    .hero{
+      position:relative;
+      overflow:hidden;
+      padding:42px;
+      border:1px solid var(--line);
+      border-radius:32px;
+      background:
+        linear-gradient(145deg,rgba(255,255,255,.065),rgba(255,255,255,.018)),
+        var(--surface);
+      box-shadow:var(--shadow);
+    }
+
+    .hero::after{
+      content:"101101";
+      position:absolute;
+      right:-22px;
+      bottom:-56px;
+      font-size:150px;
+      font-weight:1000;
+      letter-spacing:-.09em;
+      color:rgba(255,255,255,.035);
+      pointer-events:none;
+    }
+
+    .badge{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:7px 11px;
+      border-radius:999px;
+      border:1px solid rgba(124,92,255,.35);
+      background:rgba(124,92,255,.12);
+      color:#ded8ff;
+      font-size:12px;
+      font-weight:900;
+      letter-spacing:.07em;
+    }
+
+    .badge-dot{
+      width:7px;height:7px;border-radius:50%;
+      background:linear-gradient(135deg,var(--purple),var(--cyan));
+      box-shadow:0 0 14px rgba(37,217,255,.8);
+    }
+
+    h1{
+      margin:18px 0 14px;
+      max-width:720px;
+      font-size:clamp(42px,7vw,78px);
+      line-height:.98;
+      letter-spacing:-.06em;
+    }
+
+    .gradient-text{
+      background:linear-gradient(90deg,#fff 5%,#cfc6ff 45%,#8decff);
+      color:transparent;
+      background-clip:text;
+      -webkit-background-clip:text;
+    }
+
+    .hero p{
+      max-width:650px;
+      margin:0;
+      color:var(--muted);
+      font-size:17px;
+      line-height:1.75;
+    }
+
+    .quick-rule{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      margin-top:24px;
+    }
+
+    .pill{
+      padding:10px 13px;
+      border:1px solid var(--line);
+      border-radius:14px;
+      background:rgba(255,255,255,.028);
+      color:#dce4f8;
+      font-size:13px;
+      font-weight:800;
+    }
+
+    .section{
+      margin-top:22px;
+      padding:28px;
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      background:
+        linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.012)),
+        var(--surface);
+    }
+
+    .section-head{
+      display:flex;
+      align-items:flex-end;
+      justify-content:space-between;
+      gap:18px;
+      margin-bottom:20px;
+    }
+
+    .section-kicker{
+      color:var(--cyan);
+      font-size:12px;
+      font-weight:950;
+      letter-spacing:.11em;
+      text-transform:uppercase;
+    }
+
+    h2{
+      margin:5px 0 0;
+      font-size:clamp(26px,4vw,40px);
+      letter-spacing:-.045em;
+    }
+
+    .section-desc{
+      margin:0;
+      max-width:430px;
+      color:var(--muted);
+      font-size:14px;
+      text-align:right;
+    }
+
+    .weights{
+      display:grid;
+      grid-template-columns:repeat(6,1fr);
+      gap:12px;
+    }
+
+    .weight{
+      position:relative;
+      min-width:0;
+      padding:19px 8px 16px;
+      border:1px solid var(--line);
+      border-radius:18px;
+      background:var(--surface-2);
+      color:#77839e;
+      cursor:pointer;
+      transition:transform .18s ease,border-color .18s ease,background .18s ease,color .18s ease;
+    }
+
+    .weight:hover{transform:translateY(-2px);border-color:rgba(124,92,255,.55)}
+    .weight:focus-visible{outline:3px solid rgba(37,217,255,.45);outline-offset:3px}
+    .weight.active{
+      color:#fff;
+      border-color:rgba(99,245,180,.55);
+      background:
+        linear-gradient(180deg,rgba(99,245,180,.16),rgba(99,245,180,.045)),
+        var(--surface-2);
+      box-shadow:0 0 24px rgba(99,245,180,.08) inset;
+    }
+
+    .weight-value{
+      display:block;
+      font-size:clamp(22px,4vw,32px);
+      font-weight:1000;
+      letter-spacing:-.04em;
+    }
+
+    .weight-state{
+      display:block;
+      margin-top:5px;
+      font-size:10px;
+      font-weight:950;
+      letter-spacing:.12em;
+    }
+
+    .weight-index{
+      position:absolute;
+      top:8px;right:9px;
+      color:rgba(255,255,255,.26);
+      font-size:9px;
+      font-weight:900;
+    }
+
+    .result-grid{
+      display:grid;
+      grid-template-columns:1.2fr .8fr;
+      gap:16px;
+      margin-top:16px;
+    }
+
+    .result-card{
+      min-height:180px;
+      padding:22px;
+      border:1px solid var(--line);
+      border-radius:20px;
+      background:rgba(255,255,255,.025);
+    }
+
+    .label{
+      color:var(--muted);
+      font-size:11px;
+      font-weight:950;
+      letter-spacing:.12em;
+      text-transform:uppercase;
+    }
+
+    .expression{
+      margin-top:16px;
+      font-size:clamp(23px,4vw,38px);
+      font-weight:950;
+      letter-spacing:-.04em;
+      line-height:1.28;
+      word-break:keep-all;
+    }
+
+    .total{
+      display:block;
+      margin-top:7px;
+      color:var(--green);
+      font-size:1.35em;
+    }
+
+    .bits{
+      display:flex;
+      flex-wrap:wrap;
+      gap:7px;
+      margin-top:18px;
+    }
+
+    .bit{
+      width:42px;height:52px;
+      display:grid;place-items:center;
+      border:1px solid var(--line);
+      border-radius:13px;
+      background:var(--surface-2);
+      color:#66728c;
+      font-size:23px;
+      font-weight:1000;
+    }
+
+    .bit.on{
+      color:#fff;
+      border-color:rgba(124,92,255,.58);
+      background:linear-gradient(180deg,rgba(124,92,255,.28),rgba(124,92,255,.07));
+    }
+
+    .bit-labels{
+      display:flex;
+      flex-wrap:wrap;
+      gap:7px;
+      margin-top:7px;
+    }
+
+    .bit-label{
+      width:42px;
+      text-align:center;
+      color:#70809c;
+      font-size:9px;
+      font-weight:900;
+    }
+
+    .actions{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      margin-top:18px;
+    }
+
+    .btn{
+      min-height:44px;
+      padding:11px 16px;
+      border:1px solid var(--line);
+      border-radius:14px;
+      background:var(--surface-2);
+      color:var(--text);
+      cursor:pointer;
+      font-weight:850;
+      transition:transform .18s ease,border-color .18s ease,filter .18s ease;
+    }
+
+    .btn:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.25)}
+    .btn.primary{
+      border:0;
+      background:linear-gradient(135deg,var(--purple),var(--cyan));
+      color:#07101a;
+    }
+
+    .explain{
+      margin-top:16px;
+      padding:18px 19px;
+      border:1px solid rgba(124,92,255,.30);
+      border-radius:18px;
+      background:linear-gradient(135deg,rgba(124,92,255,.14),rgba(37,217,255,.06));
+      color:#dfe7fa;
+      font-size:14px;
+      line-height:1.72;
+    }
+
+    .explain strong{color:var(--green)}
+
+    .challenge-wrap{
+      display:grid;
+      grid-template-columns:.85fr 1.15fr;
+      gap:16px;
+    }
+
+    .target-box,.challenge-board{
+      padding:22px;
+      border:1px solid var(--line);
+      border-radius:20px;
+      background:rgba(255,255,255,.024);
+    }
+
+    .target{
+      margin-top:13px;
+      font-size:clamp(70px,11vw,112px);
+      line-height:1;
+      font-weight:1000;
+      letter-spacing:-.07em;
+      color:var(--yellow);
+    }
+
+    .status{
+      min-height:26px;
+      margin-top:13px;
+      color:var(--muted);
+      font-weight:800;
+    }
+
+    .status.good{color:var(--green)}
+    .status.bad{color:var(--red)}
+
+    .challenge-values{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:10px;
+      margin-top:16px;
+    }
+
+    .challenge-value{
+      padding:14px 8px;
+      border:1px solid var(--line);
+      border-radius:14px;
+      background:var(--surface-2);
+      color:#76839d;
+      cursor:pointer;
+      font-weight:950;
+    }
+
+    .challenge-value.active{
+      color:#fff;
+      border-color:rgba(255,214,107,.55);
+      background:linear-gradient(180deg,rgba(255,214,107,.16),rgba(255,214,107,.04));
+    }
+
+    .challenge-sum{
+      margin-top:16px;
+      font-size:28px;
+      font-weight:950;
+      letter-spacing:-.035em;
+    }
+
+    .steps{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:14px;
+    }
+
+    .step{
+      padding:20px;
+      border:1px solid var(--line);
+      border-radius:18px;
+      background:rgba(255,255,255,.02);
+    }
+
+    .step-no{
+      width:28px;height:28px;
+      display:grid;place-items:center;
+      border-radius:9px;
+      background:rgba(124,92,255,.18);
+      color:#dcd5ff;
+      font-size:12px;
+      font-weight:950;
+    }
+
+    .step h3{
+      margin:14px 0 8px;
+      font-size:18px;
+      letter-spacing:-.03em;
+    }
+
+    .step p{
+      margin:0;
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.7;
+    }
+
+    footer{
+      display:flex;
+      justify-content:space-between;
+      gap:16px;
+      padding:26px 3px 0;
+      color:#71809b;
+      font-size:12px;
+    }
+
+    @media (max-width:760px){
+      .shell{width:min(100% - 20px,1040px);padding-top:10px}
+      .topbar{padding:4px 2px}
+      .hero{padding:28px 22px;border-radius:25px}
+      .hero::after{font-size:100px;bottom:-35px}
+      .section{padding:22px 18px}
+      .section-head{align-items:flex-start;flex-direction:column}
+      .section-desc{text-align:left}
+      .weights{grid-template-columns:repeat(3,1fr)}
+      .result-grid,.challenge-wrap{grid-template-columns:1fr}
+      .steps{grid-template-columns:1fr}
+      footer{flex-direction:column}
+    }
+
+    @media (prefers-reduced-motion:reduce){
+      html{scroll-behavior:auto}
+      *{transition:none!important}
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <div class="topbar">
+      <div class="brand">
+        <div class="brand-mark">01</div>
+        <span>Binary Lab</span>
+      </div>
+      <div class="club">○○고등학교 수학동아리</div>
+    </div>
+
+    <section class="hero">
+      <div class="badge"><span class="badge-dot"></span> NUMBER TRICK EXPLAINED</div>
+      <h1><span class="gradient-text">숫자 맞히기의 비밀,</span><br>이진법으로 풀어보기</h1>
+      <p>
+        카드에 숫자가 있는지만 대답했는데 어떻게 정답을 맞혔을까요?
+        여섯 개의 값을 직접 켜고 끄며 방금 체험한 원리를 확인해 보세요.
+      </p>
+      <div class="quick-rule">
+        <span class="pill">카드값: 1 · 2 · 4 · 8 · 16 · 32</span>
+        <span class="pill">있으면 1, 없으면 0</span>
+        <span class="pill">켜진 값의 합 = 생각한 숫자</span>
+      </div>
+    </section>
+
+    <section class="section" id="playground">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">01 · Playground</div>
+          <h2>직접 눌러서 숫자를 만들어 보세요</h2>
+        </div>
+        <p class="section-desc">
+          각 버튼은 카드 한 장을 뜻합니다. 숫자가 그 카드에 들어 있다면 ON으로 켭니다.
+        </p>
+      </div>
+
+      <div class="weights" id="weights" aria-label="이진법 자리값 선택">
+        <button class="weight active" data-value="32" aria-pressed="true"><span class="weight-index">2⁵</span><span class="weight-value">32</span><span class="weight-state">ON</span></button>
+        <button class="weight" data-value="16" aria-pressed="false"><span class="weight-index">2⁴</span><span class="weight-value">16</span><span class="weight-state">OFF</span></button>
+        <button class="weight active" data-value="8" aria-pressed="true"><span class="weight-index">2³</span><span class="weight-value">8</span><span class="weight-state">ON</span></button>
+        <button class="weight active" data-value="4" aria-pressed="true"><span class="weight-index">2²</span><span class="weight-value">4</span><span class="weight-state">ON</span></button>
+        <button class="weight" data-value="2" aria-pressed="false"><span class="weight-index">2¹</span><span class="weight-value">2</span><span class="weight-state">OFF</span></button>
+        <button class="weight active" data-value="1" aria-pressed="true"><span class="weight-index">2⁰</span><span class="weight-value">1</span><span class="weight-state">ON</span></button>
+      </div>
+
+      <div class="result-grid">
+        <div class="result-card">
+          <div class="label">켜진 카드의 합</div>
+          <div class="expression">
+            <span id="expression">32 + 8 + 4 + 1</span>
+            <span class="total">= <span id="total">45</span></span>
+          </div>
+        </div>
+
+        <div class="result-card">
+          <div class="label">이진수</div>
+          <div class="bits" id="bits" aria-label="이진수 101101">
+            <span class="bit on">1</span><span class="bit">0</span><span class="bit on">1</span>
+            <span class="bit on">1</span><span class="bit">0</span><span class="bit on">1</span>
+          </div>
+          <div class="bit-labels">
+            <span class="bit-label">32</span><span class="bit-label">16</span><span class="bit-label">8</span>
+            <span class="bit-label">4</span><span class="bit-label">2</span><span class="bit-label">1</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn primary" id="randomExample">무작위 숫자 보기</button>
+        <button class="btn" id="resetExample">45로 되돌리기</button>
+        <button class="btn" id="clearExample">모두 끄기</button>
+      </div>
+
+      <div class="explain">
+        각 카드는 이진수의 <strong>한 자리</strong>를 검사합니다.
+        참가자가 “있다”고 답한 카드의 값은 1, “없다”고 답한 카드의 값은 0이 됩니다.
+        따라서 1인 자리의 값만 모두 더하면 처음 생각한 숫자가 정확히 나옵니다.
+      </div>
+    </section>
+
+    <section class="section" id="challenge">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">02 · Challenge</div>
+          <h2>목표 숫자를 이진법으로 만들어 보세요</h2>
+        </div>
+        <p class="section-desc">
+          필요한 값만 선택한 뒤 정답을 확인하세요. 목표는 1부터 60 사이에서 무작위로 정해집니다.
+        </p>
+      </div>
+
+      <div class="challenge-wrap">
+        <div class="target-box">
+          <div class="label">목표 숫자</div>
+          <div class="target" id="target">27</div>
+          <div class="status" id="challengeStatus">필요한 카드값을 골라 보세요.</div>
+          <div class="actions">
+            <button class="btn primary" id="checkChallenge">정답 확인</button>
+            <button class="btn" id="newChallenge">새 문제</button>
+          </div>
+        </div>
+
+        <div class="challenge-board">
+          <div class="label">카드값 선택</div>
+          <div class="challenge-values" id="challengeValues">
+            <button class="challenge-value" data-value="32">32</button>
+            <button class="challenge-value" data-value="16">16</button>
+            <button class="challenge-value" data-value="8">8</button>
+            <button class="challenge-value" data-value="4">4</button>
+            <button class="challenge-value" data-value="2">2</button>
+            <button class="challenge-value" data-value="1">1</button>
+          </div>
+          <div class="challenge-sum">현재 합: <span id="challengeSum">0</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">03 · Why it works</div>
+          <h2>원리는 세 단계면 끝입니다</h2>
+        </div>
+      </div>
+
+      <div class="steps">
+        <article class="step">
+          <div class="step-no">1</div>
+          <h3>각 카드에는 역할이 있다</h3>
+          <p>여섯 장의 카드는 각각 1, 2, 4, 8, 16, 32 중 하나의 자리값을 담당합니다.</p>
+        </article>
+        <article class="step">
+          <div class="step-no">2</div>
+          <h3>있다 = 1, 없다 = 0</h3>
+          <p>생각한 숫자가 카드에 있다면 해당 자리값을 사용한다는 뜻입니다.</p>
+        </article>
+        <article class="step">
+          <div class="step-no">3</div>
+          <h3>사용한 값만 더한다</h3>
+          <p>“있다”고 답한 카드의 값만 더하면 처음 생각한 숫자가 됩니다.</p>
+        </article>
+      </div>
+    </section>
+
+    <footer>
+      <span>© ○○고등학교 수학동아리 · Binary Number Experience</span>
+      <span>한 파일로 동작하는 오프라인 웹페이지</span>
+    </footer>
+  </main>
+
+  <script>
+    (() => {
+      const VALUES = [32,16,8,4,2,1];
+
+      const weightButtons = [...document.querySelectorAll('#weights .weight')];
+      const expressionEl = document.getElementById('expression');
+      const totalEl = document.getElementById('total');
+      const bitsEl = document.getElementById('bits');
+
+      function selectedValues(buttons, selector = '.active') {
+        return buttons
+          .filter(button => button.matches(selector))
+          .map(button => Number(button.dataset.value));
+      }
+
+      function setExampleNumber(number) {
+        weightButtons.forEach(button => {
+          const value = Number(button.dataset.value);
+          const active = (number & value) !== 0;
+          button.classList.toggle('active', active);
+          button.setAttribute('aria-pressed', String(active));
+        });
+        renderExample();
+      }
+
+      function renderExample() {
+        const active = selectedValues(weightButtons);
+        const total = active.reduce((sum, value) => sum + value, 0);
+
+        weightButtons.forEach(button => {
+          const on = button.classList.contains('active');
+          button.querySelector('.weight-state').textContent = on ? 'ON' : 'OFF';
+          button.setAttribute('aria-pressed', String(on));
+        });
+
+        expressionEl.textContent = active.length ? active.join(' + ') : '0';
+        totalEl.textContent = total;
+
+        bitsEl.innerHTML = weightButtons.map(button => {
+          const on = button.classList.contains('active');
+          return `<span class="bit ${on ? 'on' : ''}">${on ? '1' : '0'}</span>`;
+        }).join('');
+        bitsEl.setAttribute(
+          'aria-label',
+          '이진수 ' + weightButtons.map(button => button.classList.contains('active') ? '1' : '0').join('')
+        );
+      }
+
+      weightButtons.forEach(button => {
+        button.addEventListener('click', () => {
+          button.classList.toggle('active');
+          renderExample();
+        });
+      });
+
+      document.getElementById('randomExample').addEventListener('click', () => {
+        setExampleNumber(Math.floor(Math.random() * 60) + 1);
+      });
+      document.getElementById('resetExample').addEventListener('click', () => setExampleNumber(45));
+      document.getElementById('clearExample').addEventListener('click', () => setExampleNumber(0));
+
+      const challengeButtons = [...document.querySelectorAll('#challengeValues .challenge-value')];
+      const targetEl = document.getElementById('target');
+      const challengeSumEl = document.getElementById('challengeSum');
+      const statusEl = document.getElementById('challengeStatus');
+      let target = 27;
+
+      function challengeSum() {
+        return challengeButtons
+          .filter(button => button.classList.contains('active'))
+          .reduce((sum, button) => sum + Number(button.dataset.value), 0);
+      }
+
+      function renderChallenge() {
+        challengeSumEl.textContent = challengeSum();
+        statusEl.textContent = '필요한 카드값을 골라 보세요.';
+        statusEl.className = 'status';
+      }
+
+      function newChallenge() {
+        target = Math.floor(Math.random() * 60) + 1;
+        targetEl.textContent = target;
+        challengeButtons.forEach(button => button.classList.remove('active'));
+        renderChallenge();
+      }
+
+      challengeButtons.forEach(button => {
+        button.addEventListener('click', () => {
+          button.classList.toggle('active');
+          renderChallenge();
+        });
+      });
+
+      document.getElementById('checkChallenge').addEventListener('click', () => {
+        const sum = challengeSum();
+        if (sum === target) {
+          statusEl.textContent = `정답! ${target}을(를) 정확히 만들었습니다.`;
+          statusEl.className = 'status good';
+        } else if (sum < target) {
+          statusEl.textContent = `${target - sum}만큼 더 필요합니다.`;
+          statusEl.className = 'status bad';
+        } else {
+          statusEl.textContent = `${sum - target}만큼 초과했습니다.`;
+          statusEl.className = 'status bad';
+        }
+      });
+
+      document.getElementById('newChallenge').addEventListener('click', newChallenge);
+
+      renderExample();
+      renderChallenge();
+    })();
+  </script>
+</body>
+</html>
