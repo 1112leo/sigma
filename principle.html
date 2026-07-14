@@ -22,34 +22,33 @@
       <section class="lesson-section">
         <div class="kicker">STEP 1 · 10진법</div>
         <h2>352는 왜 ‘삼백오십이’일까요?</h2>
-        <p>숫자 352에서 같은 숫자라도 놓인 자리에 따라 값이 달라집니다. 백의 자리 3은 300, 십의 자리 5는 50, 일의 자리 2는 2를 뜻해요.</p>
+        <p>10진법은 한 자리에 0부터 9까지만 사용합니다. 같은 숫자라도 놓인 자리에 따라 값이 달라지고, 왼쪽으로 한 칸 갈 때마다 자리값이 10배가 됩니다.</p>
         <div class="decimal-demo">
-          <div class="digit-column"><span>1000의 자리</span><b>0</b></div>
-          <div class="digit-column used"><span>100의 자리</span><b>3</b></div>
-          <div class="digit-column used"><span>10의 자리</span><b>5</b></div>
-          <div class="digit-column used"><span>1의 자리</span><b>2</b></div>
+          <div class="digit-column"><span>10<sup>3</sup>의 자리</span><b>0</b></div>
+          <div class="digit-column used"><span>10<sup>2</sup>의 자리</span><b>3</b></div>
+          <div class="digit-column used"><span>10<sup>1</sup>의 자리</span><b>5</b></div>
+          <div class="digit-column used"><span>10<sup>0</sup>의 자리</span><b>2</b></div>
         </div>
-        <div class="clean-equation">3×100 + 5×10 + 2×1 = 352</div>
-        <div class="bridge"><span class="bridge-icon">×10</span><div><strong>10진법은 왼쪽으로 갈 때 자리값이 10배</strong><p>1 → 10 → 100 → 1000처럼 커집니다.</p></div></div>
+        <div class="clean-equation">3×10<sup>2</sup> + 5×10<sup>1</sup> + 2×10<sup>0</sup> = 352</div>
+        <div class="bridge"><span class="bridge-icon">×10</span><div><strong>10진법은 0~9를 사용하고, 왼쪽으로 갈수록 자리값이 10배</strong><p>10<sup>0</sup> → 10<sup>1</sup> → 10<sup>2</sup> → 10<sup>3</sup> 순서로 커집니다.</p></div></div>
       </section>
 
       <section class="lesson-section">
         <div class="kicker">STEP 2 · 이진법으로 바꾸기</div>
-        <h2>이진법은 자리값이 2배씩 커져요</h2>
-        <p>이진법도 원리는 같습니다. 다만 한 자리에 0과 1만 쓰고, 자리값은 1, 2, 4, 8, 16, 32처럼 두 배씩 커져요.</p>
+        <h2>이진법은 0과 1만 쓰고, 자리값이 2배씩 커져요</h2>
+        <p>이진법은 한 자리에 0과 1만 사용합니다. 오른쪽부터 자리값이 2<sup>0</sup>, 2<sup>1</sup>, 2<sup>2</sup>, 2<sup>3</sup>처럼 두 배씩 커집니다.</p>
         <div class="binary-demo">
-          <div class="digit-column used"><span>32의 자리</span><b>1</b></div>
-          <div class="digit-column"><span>16의 자리</span><b>0</b></div>
-          <div class="digit-column used"><span>8의 자리</span><b>1</b></div>
-          <div class="digit-column used"><span>4의 자리</span><b>1</b></div>
-          <div class="digit-column"><span>2의 자리</span><b>0</b></div>
-          <div class="digit-column used"><span>1의 자리</span><b>1</b></div>
+          <div class="digit-column used"><span>2<sup>3</sup>의 자리</span><b>1</b></div>
+          <div class="digit-column used"><span>2<sup>2</sup>의 자리</span><b>1</b></div>
+          <div class="digit-column"><span>2<sup>1</sup>의 자리</span><b>0</b></div>
+          <div class="digit-column used"><span>2<sup>0</sup>의 자리</span><b>1</b></div>
         </div>
         <div class="rule-list">
           <div class="rule-row"><b>1</b><p><strong>그 자리값을 사용한다</strong>는 뜻이에요.</p></div>
           <div class="rule-row"><b>0</b><p><strong>그 자리값을 사용하지 않는다</strong>는 뜻이에요.</p></div>
         </div>
-        <div class="bridge"><span class="bridge-icon">×2</span><div><strong>101101은 32, 8, 4, 1을 사용한다는 표시</strong><p>그래서 32 + 8 + 4 + 1 = 45가 됩니다.</p></div></div>
+        <div class="clean-equation">1×2<sup>3</sup> + 1×2<sup>2</sup> + 0×2<sup>1</sup> + 1×2<sup>0</sup> = 13</div>
+        <div class="bridge"><span class="bridge-icon">×2</span><div><strong>1101<sub>2</sub>는 8, 4, 1을 사용한다는 표시</strong><p>그래서 8 + 4 + 1 = 13이 됩니다.</p></div></div>
       </section>
 
       <section class="worked-example" id="example">
