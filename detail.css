@@ -14,6 +14,15 @@
 .review-callout{background:#eaf0ff;color:#294d9f;border:1px solid #cbd8fb}
 .result-note.final-result{background:#f0f2f5;color:#3f4b5f;border:1px solid #dde1e7;line-height:1.7}
 
+/* 무작위 OX 테스트 */
+.ox-question{display:grid;place-items:center;min-height:150px;margin:26px 0 18px;padding:26px;border:1px solid #dbe2f2;border-radius:20px;background:#f5f7fb;color:var(--ink);font-size:clamp(21px,4vw,29px);font-weight:900;line-height:1.5;text-align:center;letter-spacing:-.025em}
+.ox-options{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.ox-button{min-height:88px;border:0;border-radius:18px;font:inherit;font-size:38px;font-weight:950;cursor:pointer;transition:transform .16s ease,box-shadow .16s ease}
+.ox-button:hover{transform:translateY(-2px);box-shadow:0 9px 22px rgba(35,53,87,.13)}
+.ox-button:focus-visible{outline:3px solid #92adff;outline-offset:3px}
+.ox-true{background:var(--blue);color:#fff}.ox-false{background:#edf0f5;color:#4d586c}
+@media(max-width:390px){.ox-question{min-height:135px;padding:22px 17px}.ox-button{min-height:76px;font-size:34px}}
+
 /* STEP 3 · 실제 카드 기반 숫자 카드 */
 .card-example{overflow:hidden}
 .magic-card-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-top:26px}
