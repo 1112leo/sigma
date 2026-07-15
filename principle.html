@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>원리 알아보기 | 시그마</title>
   <link rel="stylesheet" href="site.css">
-  <link rel="stylesheet" href="detail.css">
+  <link rel="stylesheet" href="detail.css?v=phase2-reference-9">
 </head>
 <body class="sub-page">
   <header class="top wrap">
@@ -22,21 +22,21 @@
       <section class="lesson-section">
         <div class="kicker">STEP 1 · 10진법</div>
         <h2>352는 왜 ‘삼백오십이’일까요?</h2>
-        <p>10진법은 한 자리에 0부터 9까지만 사용합니다. 같은 숫자라도 놓인 자리에 따라 값이 달라지고, 왼쪽으로 한 칸 갈 때마다 자리값이 10배가 됩니다.</p>
+        <p>10진법은 한 자리에 0부터 9까지, 총 10개의 숫자를 사용합니다. 9 다음에는 한 자리에서 쓸 수 있는 숫자를 모두 사용했기 때문에 왼쪽 자리로 올려 10으로 나타냅니다. 같은 숫자라도 놓인 자리에 따라 값이 달라지고, 왼쪽으로 한 칸 갈 때마다 자리값은 10배가 됩니다.</p>
         <div class="decimal-demo">
           <div class="digit-column"><span>10<sup>3</sup>의 자리</span><b>0</b></div>
           <div class="digit-column used"><span>10<sup>2</sup>의 자리</span><b>3</b></div>
           <div class="digit-column used"><span>10<sup>1</sup>의 자리</span><b>5</b></div>
           <div class="digit-column used"><span>10<sup>0</sup>의 자리</span><b>2</b></div>
         </div>
-        <div class="clean-equation">3×10<sup>2</sup> + 5×10<sup>1</sup> + 2×10<sup>0</sup> = 352</div>
-        <div class="bridge"><span class="bridge-icon">×10</span><div><strong>10진법은 0~9를 사용하고, 왼쪽으로 갈수록 자리값이 10배</strong><p>10<sup>0</sup> → 10<sup>1</sup> → 10<sup>2</sup> → 10<sup>3</sup> 순서로 커집니다.</p></div></div>
+        <div class="clean-equation">3×10<sup>2</sup> + 5×10<sup>1</sup> + 2×10<sup>0</sup></div>
+        <div class="clean-equation">= 3×100 + 5×10 + 2×1 = 352</div>
       </section>
 
       <section class="lesson-section">
         <div class="kicker">STEP 2 · 이진법으로 바꾸기</div>
         <h2>이진법은 0과 1만 쓰고, 자리값이 2배씩 커져요</h2>
-        <p>이진법은 한 자리에 0과 1만 사용합니다. 오른쪽부터 자리값이 2<sup>0</sup>, 2<sup>1</sup>, 2<sup>2</sup>, 2<sup>3</sup>처럼 두 배씩 커집니다.</p>
+        <p>이진법은 한 자리에 0과 1, 두 숫자만 사용합니다. 1 다음에는 한 자리에서 쓸 수 있는 숫자를 모두 사용했기 때문에 왼쪽 자리로 올려 10<sub>2</sub>로 나타냅니다. 오른쪽부터 자리값은 2<sup>0</sup>, 2<sup>1</sup>, 2<sup>2</sup>, 2<sup>3</sup>처럼 두 배씩 커집니다.</p>
         <div class="binary-demo">
           <div class="digit-column used"><span>2<sup>3</sup>의 자리</span><b>1</b></div>
           <div class="digit-column used"><span>2<sup>2</sup>의 자리</span><b>1</b></div>
@@ -47,24 +47,42 @@
           <div class="rule-row"><b>1</b><p><strong>그 자리값을 사용한다</strong>는 뜻이에요.</p></div>
           <div class="rule-row"><b>0</b><p><strong>그 자리값을 사용하지 않는다</strong>는 뜻이에요.</p></div>
         </div>
-        <div class="clean-equation">1×2<sup>3</sup> + 1×2<sup>2</sup> + 0×2<sup>1</sup> + 1×2<sup>0</sup> = 13</div>
+        <div class="clean-equation">1×2<sup>3</sup> + 1×2<sup>2</sup> + 0×2<sup>1</sup> + 1×2<sup>0</sup></div>
+        <div class="clean-equation">= 8 + 4 + 0 + 1 = 13</div>
         <div class="bridge"><span class="bridge-icon">×2</span><div><strong>1101<sub>2</sub>는 8, 4, 1을 사용한다는 표시</strong><p>그래서 8 + 4 + 1 = 13이 됩니다.</p></div></div>
       </section>
 
-      <section class="worked-example" id="example">
-        <div class="example-head"><div><div class="kicker">STEP 3 · 카드와 연결</div><h2>45를 골랐다면?</h2><p>각 카드는 이진법의 자리 하나를 담당해요.</p></div><span class="answer-badge">정답 45</span></div>
-        <div class="place-strip">
-          <div class="place-box used"><small>사용함</small><b>32</b></div><div class="place-box"><small>사용 안 함</small><b>16</b></div><div class="place-box used"><small>사용함</small><b>8</b></div><div class="place-box used"><small>사용함</small><b>4</b></div><div class="place-box"><small>사용 안 함</small><b>2</b></div><div class="place-box used"><small>사용함</small><b>1</b></div>
+      <section class="worked-example card-example" id="example">
+        <div class="example-head"><div><div class="kicker">STEP 3 · 실제 카드와 연결</div><h2>13을 골랐다면 어떤 카드에 있을까요?</h2><p>13은 1 카드, 4 카드, 8 카드에 들어 있습니다. 생각한 숫자가 들어 있는 카드의 값을 더하면 원래 숫자를 알 수 있습니다.</p></div><span class="answer-badge">정답 13</span></div>
+        <div class="magic-card-grid" id="magicCardGrid">
+          <article class="magic-number-card card-theme-yellow" data-card-value="1" aria-label="1 카드, 숫자 13이 포함된 카드">
+            <div class="magic-card-label">1 카드</div>
+            <div class="star-border star-border-top" aria-hidden="true"></div><div class="star-border star-border-left" aria-hidden="true"></div><div class="star-border star-border-right" aria-hidden="true"></div><div class="star-border star-border-bottom" aria-hidden="true"></div>
+            <div class="magic-card-number-grid"></div>
+          </article>
+          <article class="magic-number-card card-theme-red" data-card-value="4" aria-label="4 카드, 숫자 13이 포함된 카드">
+            <div class="magic-card-label">4 카드</div>
+            <div class="star-border star-border-top" aria-hidden="true"></div><div class="star-border star-border-left" aria-hidden="true"></div><div class="star-border star-border-right" aria-hidden="true"></div><div class="star-border star-border-bottom" aria-hidden="true"></div>
+            <div class="magic-card-number-grid"></div>
+          </article>
+          <article class="magic-number-card card-theme-black" data-card-value="8" aria-label="8 카드, 숫자 13이 포함된 카드">
+            <div class="magic-card-label">8 카드</div>
+            <div class="star-border star-border-top" aria-hidden="true"></div><div class="star-border star-border-left" aria-hidden="true"></div><div class="star-border star-border-right" aria-hidden="true"></div><div class="star-border star-border-bottom" aria-hidden="true"></div>
+            <div class="magic-card-number-grid"></div>
+          </article>
         </div>
-        <div class="clean-equation">32 + 8 + 4 + 1 = 45</div>
-        <div class="binary-caption">카드에 있으면 1, 없으면 0 → 101101</div>
+        <div class="card-sum-flow" aria-label="1 카드 더하기 4 카드 더하기 8 카드">
+          <span>1 카드</span><b>+</b><span>4 카드</span><b>+</b><span>8 카드</span>
+        </div>
+        <div class="clean-equation">1 + 4 + 8 = 13</div>
+        <div class="binary-caption">생각한 숫자가 들어 있는 카드의 값을 더하면 원래 숫자가 됩니다.</div>
       </section>
 
       <section class="lesson-section">
-        <div class="kicker">마지막 정리</div><h2>진행자는 숫자를 외우는 게 아니에요</h2>
+        <div class="kicker">마지막 정리</div><h2>진행자가 실제로 생각을 읽은 건 아니에요</h2>
         <div class="rule-list">
-          <div class="rule-row"><b>1</b><p>참가자가 <strong>‘있어요’</strong>라고 답한 카드만 찾습니다.</p></div>
-          <div class="rule-row"><b>2</b><p>그 카드의 기준값인 <strong>1, 2, 4, 8, 16, 32</strong>를 더합니다.</p></div>
+          <div class="rule-row"><b>1</b><p>참가자가 <strong>‘있어요’</strong>라고 답한 카드를 찾습니다.</p></div>
+          <div class="rule-row"><b>2</b><p>그 카드의 기준값을 모두 더합니다.</p></div>
           <div class="rule-row"><b>3</b><p>그 합이 참가자가 처음 고른 숫자입니다.</p></div>
         </div>
         <div class="section-action"><a class="btn primary" href="experience.html">원리를 적용해 체험하기 →</a></div>
@@ -72,5 +90,27 @@
     </div>
   </main>
   <footer><div class="wrap">Σ 시그마 수학동아리</div></footer>
+<script>
+  const CARD_VALUES = [1, 4, 8];
+
+  function createCardNumbers(cardValue) {
+    return Array.from({ length: 60 }, (_, index) => index + 1)
+      .filter(number => (number & cardValue) !== 0);
+  }
+
+  CARD_VALUES.forEach(cardValue => {
+    const card = document.querySelector(`[data-card-value="${cardValue}"]`);
+    const grid = card.querySelector('.magic-card-number-grid');
+
+    createCardNumbers(cardValue).forEach(number => {
+      const item = document.createElement('span');
+      item.className = `magic-card-number${number === cardValue ? ' is-reference' : ''}${number === 13 ? ' is-target' : ''}`;
+      item.textContent = number;
+      if (number === cardValue) item.setAttribute('aria-label', `기준값 ${number}`);
+      if (number === 13) item.setAttribute('aria-label', '숫자 13, 선택한 숫자');
+      grid.appendChild(item);
+    });
+  });
+</script>
 <script src="reveal.js"></script></body>
 </html>

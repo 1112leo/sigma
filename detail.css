@@ -13,3 +13,45 @@
 .next-step{margin-top:22px;padding:26px 28px;border:1px solid #cdd9fb;border-radius:24px;background:linear-gradient(135deg,#eef3ff,#fff);display:flex;align-items:center;justify-content:space-between;gap:24px}.next-step[hidden]{display:none}.next-step.is-entering{animation:result-in .48s .12s cubic-bezier(.2,.8,.2,1) both}.next-step h2{margin:3px 0;font-size:24px}.next-step p{margin:0;color:var(--muted)}.next-step .btn{flex:none}@media(max-width:650px){.next-step{display:block;padding:22px}.next-step .btn{display:block;text-align:center;margin-top:18px}}
 .review-callout{background:#eaf0ff;color:#294d9f;border:1px solid #cbd8fb}
 .result-note.final-result{background:#f0f2f5;color:#3f4b5f;border:1px solid #dde1e7;line-height:1.7}
+
+/* STEP 3 · 실제 카드 기반 숫자 카드 */
+.card-example{overflow:hidden}
+.magic-card-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-top:26px}
+.magic-number-card{--card-bg:#f4c746;--card-ink:#8b431c;--star-color:#c7332e;position:relative;min-width:0;padding:52px 38px 38px;border:3px solid rgba(255,255,255,.72);border-radius:22px;background:var(--card-bg);color:var(--card-ink);box-shadow:0 9px 0 rgba(30,42,66,.12),0 16px 30px rgba(30,42,66,.16);isolation:isolate;overflow:hidden}
+.magic-number-card:before{content:"";position:absolute;inset:7px;border:2px solid currentColor;border-radius:14px;opacity:.42;pointer-events:none}
+.card-theme-red{--card-bg:#d83d36;--card-ink:#fff;--star-color:#171820}
+.card-theme-black{--card-bg:#171820;--card-ink:#fff;--star-color:#ef3f83}
+.magic-card-label{position:absolute;z-index:3;top:16px;left:50%;transform:translateX(-50%);padding:5px 13px;border:1px solid rgba(255,255,255,.45);border-radius:999px;background:rgba(255,255,255,.88);color:#1e2b46;font-size:13px;font-weight:950;white-space:nowrap;box-shadow:0 4px 12px rgba(30,42,66,.12)}
+.star-border{position:absolute;z-index:1;color:var(--star-color);overflow:hidden;pointer-events:none}
+.star-border:before{content:"★ ★ ★ ★ ★ ★ ★ ★";font-size:12px;font-weight:900;line-height:1;white-space:nowrap}
+.star-border-top,.star-border-bottom{left:32px;right:32px;height:14px;text-align:center}
+.star-border-top{top:35px}.star-border-bottom{bottom:12px}
+.star-border-left,.star-border-right{top:50px;bottom:34px;width:14px;display:flex;justify-content:center}
+.star-border-left{left:13px}.star-border-right{right:13px}
+.star-border-left:before,.star-border-right:before{writing-mode:vertical-rl;letter-spacing:3px}
+.magic-card-number-grid{position:relative;z-index:2;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px 5px}
+.magic-card-number{display:grid;place-items:center;min-width:0;min-height:28px;border-radius:999px;font-size:clamp(12px,1.25vw,15px);font-weight:900;line-height:1;font-variant-numeric:tabular-nums}
+.magic-card-number.is-reference{color:#2f8fc7}
+.card-theme-red .magic-card-number.is-reference{color:#79c5ff}
+.card-theme-black .magic-card-number.is-reference{color:#79c5ff}
+.magic-card-number.is-target{background:#efff73;color:#17213a;box-shadow:0 0 0 3px rgba(255,255,255,.92),0 0 0 6px rgba(38,72,155,.56);transform:scale(1.08)}
+.card-sum-flow{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:10px;margin:30px auto 0}
+.card-sum-flow span{padding:9px 14px;border:1px solid #cbd8fb;border-radius:999px;background:var(--blue2);color:var(--blue);font-weight:900}
+.card-sum-flow b{color:var(--muted);font-size:20px}
+.card-example .binary-caption{max-width:620px;margin:9px auto 0;line-height:1.65}
+
+@media(max-width:800px){
+  .magic-card-grid{grid-template-columns:1fr;gap:22px}
+  .magic-number-card{width:min(100%,520px);margin-inline:auto;padding:54px 42px 40px}
+  .magic-card-number{min-height:34px;font-size:15px}
+}
+@media(max-width:390px){
+  .magic-card-grid{gap:18px;margin-top:22px}
+  .magic-number-card{padding:50px 32px 36px;border-radius:19px}
+  .magic-card-number-grid{gap:7px 3px}
+  .magic-card-number{min-height:30px;font-size:13px}
+  .star-border-top,.star-border-bottom{left:27px;right:27px}
+  .star-border-left{left:10px}.star-border-right{right:10px}
+  .card-sum-flow{gap:7px}
+  .card-sum-flow span{padding:8px 11px;font-size:13px}
+}
