@@ -24,8 +24,6 @@
 .magic-card-label{position:absolute;z-index:3;top:16px;left:50%;transform:translateX(-50%);padding:5px 13px;border:1px solid rgba(255,255,255,.45);border-radius:999px;background:rgba(255,255,255,.88);color:#1e2b46;font-size:13px;font-weight:950;white-space:nowrap;box-shadow:0 4px 12px rgba(30,42,66,.12)}
 .star-border{position:absolute;z-index:1;color:var(--star-color);overflow:hidden;pointer-events:none}
 .star-border:before{content:"★ ★ ★ ★ ★ ★ ★ ★";font-size:12px;font-weight:900;line-height:1;white-space:nowrap}
-.star-border-top,.star-border-bottom{left:32px;right:32px;height:14px;text-align:center}
-.star-border-top{top:35px}.star-border-bottom{bottom:12px}
 .star-border-left,.star-border-right{top:50px;bottom:34px;width:14px;display:flex;justify-content:center}
 .star-border-left{left:13px}.star-border-right{right:13px}
 .star-border-left:before,.star-border-right:before{writing-mode:vertical-rl;letter-spacing:3px}
@@ -50,7 +48,6 @@
   .magic-number-card{padding:50px 32px 36px;border-radius:19px}
   .magic-card-number-grid{gap:7px 3px}
   .magic-card-number{min-height:30px;font-size:13px}
-  .star-border-top,.star-border-bottom{left:27px;right:27px}
   .star-border-left{left:10px}.star-border-right{right:10px}
   .card-sum-flow{gap:7px}
   .card-sum-flow span{padding:8px 11px;font-size:13px}
