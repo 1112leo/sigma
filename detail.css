@@ -21,6 +21,8 @@
 .ox-button:hover{transform:translateY(-2px);box-shadow:0 9px 22px rgba(35,53,87,.13)}
 .ox-button:focus-visible{outline:3px solid #92adff;outline-offset:3px}
 .ox-true{background:var(--blue);color:#fff}.ox-false{background:#edf0f5;color:#4d586c}
+.quiz-optional{margin:18px auto 0;padding:13px 15px;border-radius:13px;background:#f5f7fb;color:var(--muted);font-size:14px}
+.quiz-complete-actions{display:flex;justify-content:center;gap:9px;flex-wrap:wrap;margin-top:20px}
 @media(max-width:390px){.ox-question{min-height:135px;padding:22px 17px}.ox-button{min-height:76px;font-size:34px}}
 
 /* STEP 3 · 실제 카드 기반 숫자 카드 */
