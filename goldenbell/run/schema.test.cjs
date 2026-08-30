@@ -53,7 +53,7 @@ test('local migration is persisted under the existing key; future/corrupt data i
 
 test('public payload never contains operator fields, even with answer visible', () => {
   const h = createHarness();
-  h.run(`Object.assign(state.questions[0], {answer:'정답',acceptedAnswers:'SECRET',judgeNote:'SECRET',author:'SECRET',note:'SECRET',reviewStatus:'final'}); state.displayMode='question';`);
+  h.run(`Object.assign(state.questions[0], {answer:'정답',acceptedAnswers:'SECRET',judgeNote:'SECRET',author:'SECRET',note:'SECRET',reviewStatus:'final'}); goQuestion(0);`);
   for (const visible of [false, true]) {
     h.run(`state.answerVisible=${visible}`);
     const payload = h.json('buildPublicState()');

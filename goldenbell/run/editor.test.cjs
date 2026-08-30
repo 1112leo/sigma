@@ -7,7 +7,7 @@ function fixture() {
   h.run(`state.questions = [
     migrateQuestion({id:'Q1',question:'삼각형',answer:'3',category:'basic',round:'main1',usageStatus:'active',difficulty:'easy',reviewStatus:'final',author:'가'}),
     migrateQuestion({id:'Q2',question:'원',answer:'파이',category:'hard',round:'final',usageStatus:'reserve',difficulty:'extreme',reviewStatus:'peer-reviewed',author:'나'}),
-    migrateQuestion({id:'Q3',question:'수열',answer:'10',usageStatus:'disabled',author:'가'})];`);
+    migrateQuestion({id:'Q3',question:'수열',answer:'10',usageStatus:'disabled',author:'가'})]; state.sequence=state.questions.map(q=>({type:'question',questionId:q.id})); activateSequence(state,0);`);
   return h;
 }
 
@@ -28,7 +28,7 @@ test('all filters and search compose without changing data; null round is distin
 
 test('filtered reorder and deletion retain current question ID, answer state and timer', () => {
   const h=fixture();
-  h.run(`state.currentIndex=1; state.answerVisible=true; state.timer.remaining=17; questionFilters={author:'가'}; moveQuestion('Q3',-1);`);
+  h.run(`activateSequence(state,1); state.answerVisible=true; state.timer.remaining=17; questionFilters={author:'가'}; moveQuestion('Q3',-1);`);
   assert.deepEqual(h.json('state.questions.map(q=>q.id)'),['Q3','Q2','Q1']);
   assert.equal(h.run('currentQuestion().id'),'Q2');
   assert.equal(h.run('state.timer.remaining'),17);

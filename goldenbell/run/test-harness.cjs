@@ -12,7 +12,7 @@ module.exports = function createHarness() {
     location: { search: '', hash: '' },
     window: { addEventListener(name, callback) { (listeners[name] ||= []).push(callback); } },
     localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) },
-    sessionStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) },
+    sessionStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) },
     document: {
       activeElement: null, addEventListener() {}, getElementById: id => id === 'app' ? app : fields[id],
       querySelector: () => null, querySelectorAll: () => [],

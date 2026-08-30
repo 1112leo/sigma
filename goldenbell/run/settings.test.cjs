@@ -10,7 +10,7 @@ const fields = Object.fromEntries([
   'message-lobby', 'message-opening', 'message-rules', 'message-break', 'message-ending',
 ].map(id => [id, { value: '' }]));
 const context = vm.createContext({
-  assert, crypto: webcrypto, URLSearchParams,
+  assert, crypto: webcrypto, URLSearchParams, structuredClone,
   location: { search: '', hash: '' }, window: { addEventListener() {} },
   localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) },
   sessionStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) },
@@ -32,15 +32,17 @@ vm.runInContext(source.slice(0, source.lastIndexOf('\nif (IS_SCREEN) {')) + `
   assert.deepEqual(restored.messages, state.messages);
   assert.equal(normalizeState({}).messages.tagline, defaultState().messages.tagline);
   for (const mode of ['lobby', 'opening', 'break', 'ending']) {
-    state.displayMode = mode;
+    const screenId = legacyScreenIds[mode];
+    if (!state.sequence.some(item => item.screenId === screenId)) state.sequence.push({ type: 'screen', screenId });
+    activateSequence(state, state.sequence.findIndex(item => item.screenId === screenId));
     publicState = buildPublicState();
-    assert.equal(publicState.messages[mode], '');
+    assert.equal(publicState.screen.title, '');
     assert.equal(publicState.messages.tagline, '');
     assert.ok(!renderPreview().includes(defaultState().messages[mode]));
     renderScreen();
     assert.ok(!document.getElementById('app').innerHTML.includes('잠시 후 시작합니다'));
   }
-  state.displayMode = 'question';
+  activateSequence(state, state.sequence.findIndex(item => item.type === 'question'));
   publicState = buildPublicState();
   renderScreen();
   assert.ok(!document.getElementById('app').innerHTML.includes('SIGMA GOLDEN BELL'));

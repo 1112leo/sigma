@@ -6,7 +6,7 @@ const AUTH_ATTEMPT_KEY = 'sigma-goldenbell-attempts-v1';
 const PROJECTOR_SESSION_KEY = 'sigma-goldenbell-projector-session-v1';
 const PRE_IMPORT_BACKUP_KEY = 'sigma-goldenbell-pre-import-v1';
 const CHANNEL_NAME = 'sigma-goldenbell-projector-v2';
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const questionEnums = {
   category: ['basic', 'hard', 'revival', 'tiebreak'],
   round: [null, 'main1', 'revival1', 'main2', 'revival2', 'main3', 'final'],
@@ -18,8 +18,10 @@ const PBKDF2_ITERATIONS = 210000;
 const MAX_IMAGE_FILE_BYTES = 12 * 1024 * 1024;
 const MAX_IMAGE_DATA_LENGTH = 900 * 1024;
 const MAX_TOTAL_IMAGE_DATA_LENGTH = 3 * 1024 * 1024;
-const SCREEN_MODES = new Set(['lobby', 'opening', 'rules', 'question', 'break', 'ending']);
-const TABS = new Set(['live', 'questions', 'settings']);
+const SCREEN_MODES = new Set(['lobby', 'opening', 'rules', 'question', 'break', 'ending', 'screen']);
+const TABS = new Set(['live', 'questions', 'sequence', 'settings']);
+const screenStyles = { blue: '블루', gold: '골드', green: '그린', plain: '기본' };
+const legacyScreenIds = { lobby: 'waiting', opening: 'opening', rules: 'rules', break: 'standby', ending: 'end' };
 const params = new URLSearchParams(location.search);
 const IS_SCREEN = params.get('view') === 'screen' || params.get('screen') === '1';
 const screenHash = new URLSearchParams(location.hash.replace(/^#/, ''));
@@ -40,6 +42,7 @@ const reviewLabels = { draft: '초안', 'self-reviewed': '본인 검수', 'peer-
 let questionFilters = {};
 
 const screenModeMeta = {
+  screen: { label: '안내 화면', shortLabel: '안내' },
   lobby: { label: '대기 화면', shortLabel: '대기' },
   opening: { label: '오프닝 화면', shortLabel: '오프닝' },
   rules: { label: '진행 안내', shortLabel: '안내' },
@@ -87,7 +90,7 @@ function createPlaceholderQuestions() {
 }
 
 function defaultState() {
-  return {
+  const base = {
     schemaVersion: SCHEMA_VERSION,
     event: {
       title: '2026 시그마 수학 골든벨',
@@ -109,6 +112,94 @@ function defaultState() {
     timer: { remaining: 30, running: false, endAt: null },
     tab: 'live',
   };
+  base.customScreens = createDefaultScreens(base);
+  base.sequence = buildAutoSequence(base.questions);
+  base.sequenceIndex = 0;
+  base.displayMode = 'screen';
+  base.timer.remaining = 0;
+  return base;
+}
+
+function createDefaultScreens(source) {
+  const messages = source.messages;
+  return [
+    ['waiting', messages.lobby, '', 'blue'], ['opening', messages.opening, '', 'gold'],
+    ['rules', '진행 안내', messages.rules, 'blue'],
+    ['revival1-start', '패자부활전 1', '진행자의 안내를 따라주세요.', 'green'],
+    ['main-resume', '본게임 재개', '다시 도전을 이어갑니다.', 'blue'],
+    ['revival2-start', '패자부활전 2', '진행자의 안내를 따라주세요.', 'green'],
+    ['main3-start', '본게임 후반', '끝까지 도전해주세요.', 'blue'],
+    ['final-start', '등수결정전', '최종 도전을 시작합니다.', 'gold'],
+    ['judging', '판정 중입니다', '잠시만 기다려주세요.', 'plain'],
+    ['invalid-question', '문제 무효 안내', '진행자의 안내를 따라주세요.', 'plain'],
+    ['standby', messages.break, '', 'green'], ['result', '결과 발표', '', 'gold'],
+    ['awards', '시상식', '도전해 주신 여러분께 박수를 보냅니다.', 'gold'],
+    ['end', messages.ending, '', 'gold'],
+  ].map(([id, title, description, style]) => ({ id, title, subtitle: '', description, emphasis: '', style }));
+}
+
+function buildAutoSequence(questions) {
+  const sequence = ['waiting', 'opening', 'rules'].map(screenId => ({ type: 'screen', screenId }));
+  const roundScreens = { revival1: 'revival1-start', main2: 'main-resume', revival2: 'revival2-start', main3: 'main3-start', final: 'final-start' };
+  let previousRound = null;
+  for (const question of questions.filter(item => item.usageStatus === 'active')) {
+    if (question.round !== previousRound && roundScreens[question.round]) sequence.push({ type: 'screen', screenId: roundScreens[question.round] });
+    sequence.push({ type: 'question', questionId: question.id });
+    previousRound = question.round;
+  }
+  sequence.push({ type: 'screen', screenId: 'end' });
+  return sequence;
+}
+
+function normalizePresentation(raw, next) {
+  const defaults = createDefaultScreens(next);
+  if (raw.customScreens !== undefined && !Array.isArray(raw.customScreens)) throw new Error('invalid-screens');
+  if (raw.sequence !== undefined && !Array.isArray(raw.sequence)) throw new Error('invalid-sequence');
+  if (raw.customScreens?.length > 200 || raw.sequence?.length > 2000) throw new Error('sequence-limit');
+  next.customScreens = defaults;
+  for (const screen of raw.customScreens || []) {
+    if (!screen || typeof screen.id !== 'string' || !screen.id.trim()) throw new Error('invalid-screen');
+    const index = next.customScreens.findIndex(item => item.id === screen.id);
+    const fallback = next.customScreens[index] || {};
+    const normalized = { id: screen.id, title: settingText(screen.title, 100, fallback.title || ''), subtitle: settingText(screen.subtitle, 150, fallback.subtitle || ''), description: settingText(screen.description, 2000, fallback.description || ''), emphasis: settingText(screen.emphasis, 150, fallback.emphasis || ''), style: Object.hasOwn(screenStyles, screen.style) ? screen.style : 'blue' };
+    if (index >= 0) next.customScreens[index] = normalized;
+    else next.customScreens.push(normalized);
+  }
+  if (next.customScreens.length > 200) throw new Error('sequence-limit');
+  // Built-in screen content is authoritative; legacy settings edit the same values.
+  for (const [key, id] of Object.entries(legacyScreenIds)) {
+    const screen = next.customScreens.find(item => item.id === id);
+    next.messages[key] = screen[id === 'rules' ? 'description' : 'title'];
+  }
+  next.sequence = Array.isArray(raw.sequence) ? raw.sequence.map(item => {
+    if (item?.type === 'question' && typeof item.questionId === 'string') return { type: 'question', questionId: item.questionId };
+    if (item?.type === 'screen' && typeof item.screenId === 'string') return { type: 'screen', screenId: item.screenId };
+    throw new Error('invalid-sequence-item');
+  }) : buildAutoSequence(next.questions);
+  if (raw.sequence === undefined) {
+    const legacyQuestionId = next.questions[next.currentIndex]?.id;
+    const screenId = legacyScreenIds[raw.displayMode || 'lobby'];
+    let position = next.sequence.findIndex(item => raw.displayMode === 'question' ? item.questionId === legacyQuestionId : item.screenId === screenId);
+    if (position < 0 && raw.displayMode === 'question' && legacyQuestionId) {
+      // Preserve an already-presented legacy reserve/disabled question, not auto-selection.
+      position = Math.max(0, next.sequence.length - 1);
+      next.sequence.splice(position, 0, { type: 'question', questionId: legacyQuestionId });
+    }
+    if (position < 0 && screenId) {
+      position = Math.max(0, next.sequence.findIndex(item => item.questionId === legacyQuestionId));
+      next.sequence.splice(position, 0, { type: 'screen', screenId });
+    }
+    next.sequenceIndex = Math.max(0, position);
+  } else next.sequenceIndex = next.sequence.length ? Math.round(clampNumber(raw.sequenceIndex, 0, next.sequence.length - 1, 0)) : -1;
+  const item = next.sequence[next.sequenceIndex];
+  const index = item?.type === 'question' ? next.questions.findIndex(question => question.id === item.questionId) : -1;
+  next.displayMode = index >= 0 ? 'question' : 'screen';
+  if (index >= 0) next.currentIndex = index;
+  else {
+    next.answerVisible = false;
+    next.timer = { remaining: 0, running: false, endAt: null };
+  }
+  return next;
 }
 
 function safeText(value, maxLength = 5000) {
@@ -233,7 +324,7 @@ function normalizeState(candidate) {
       remaining = 0;
     }
   }
-  return {
+  return normalizePresentation(raw, {
     schemaVersion: SCHEMA_VERSION,
     event: {
       title: settingText(rawEvent.title, 100, base.event.title),
@@ -254,7 +345,7 @@ function normalizeState(candidate) {
     displayMode: SCREEN_MODES.has(raw.displayMode) ? raw.displayMode : 'lobby',
     timer: { remaining, running, endAt },
     tab: TABS.has(raw.tab) ? raw.tab : 'live',
-  };
+  });
 }
 
 function loadPrivateState() {
@@ -300,7 +391,20 @@ function getProjectorSessionId() {
 }
 
 function currentQuestion() {
-  return state?.questions[state.currentIndex] || null;
+  const item = state?.sequence[state.sequenceIndex];
+  return item?.type === 'question' ? state.questions.find(question => question.id === item.questionId) || null : null;
+}
+
+function currentScreen(source = state) {
+  const item = source?.sequence[source.sequenceIndex];
+  return source?.customScreens.find(screen => item?.type === 'screen' && screen.id === item.screenId) || { title: item ? '구성 항목을 찾을 수 없습니다' : '행사 구성을 준비해주세요', subtitle: '', description: item ? '진행자가 다음 항목을 확인하고 있습니다.' : '', emphasis: '', style: 'plain' };
+}
+
+function sequenceItemLabel(item) {
+  if (!item) return '마지막 항목입니다';
+  if (item.type === 'screen') return state.customScreens.find(screen => screen.id === item.screenId)?.title || item.screenId;
+  const question = state.questions.find(question => question.id === item.questionId);
+  return question ? `${question.id} · ${question.title || question.question || '미입력 문제'}` : `누락된 문제 · ${item.questionId}`;
 }
 
 function getTimerRemaining(timer = state?.timer || publicState?.timer) {
@@ -315,13 +419,14 @@ function buildPublicState() {
   const mayShowQuestion = state.displayMode === 'question';
   const mayShowAnswer = mayShowQuestion && state.answerVisible;
   return {
-    version: 2,
+    version: 3,
     sessionId: getProjectorSessionId(),
-    event: { ...state.event },
-    messages: { ...state.messages, rules: projectionText(state.messages.rules, 1200) },
+    event: { title: state.event.title, date: state.event.date, place: state.event.place },
+    messages: { tagline: state.messages.tagline },
     displayMode: state.displayMode,
-    currentIndex: state.currentIndex,
-    totalQuestions: state.questions.length,
+    currentIndex: state.sequence.slice(0, state.sequenceIndex + 1).filter(item => item.type === 'question').length - 1,
+    totalQuestions: state.sequence.filter(item => item.type === 'question').length,
+    screen: !mayShowQuestion ? publicScreen(currentScreen()) : null,
     question: mayShowQuestion && question ? {
       title: question.title,
       question: projectionText(question.question, 600),
@@ -333,14 +438,25 @@ function buildPublicState() {
       imageAlt: safeText(question.imageAlt, 160),
     } : null,
     answerVisible: mayShowAnswer,
-    timer: { ...state.timer, remaining: getTimerRemaining(state.timer) },
+    timer: mayShowQuestion ? { ...state.timer, remaining: getTimerRemaining(state.timer) } : null,
     publishedAt: Date.now(),
   };
 }
 
-function publishPublicState({ broadcast = true } = {}) {
+function publicScreen(screen) {
+  return { title: safeText(screen.title, 100), subtitle: safeText(screen.subtitle, 150), description: safeText(screen.description, 1200), emphasis: safeText(screen.emphasis, 150), style: Object.hasOwn(screenStyles, screen.style) ? screen.style : 'plain' };
+}
+
+function publishPublicState({ broadcast = true, locked = false } = {}) {
   if (!state) return;
   const next = buildPublicState();
+  if (locked) {
+    next.displayMode = 'screen';
+    next.question = null;
+    next.timer = null;
+    next.answerVisible = false;
+    next.screen = publicScreen(state.customScreens.find(screen => screen.id === 'waiting') || {});
+  }
   try {
     localStorage.setItem(PUBLIC_STORAGE_KEY, JSON.stringify(next));
   } catch {
@@ -351,7 +467,7 @@ function publishPublicState({ broadcast = true } = {}) {
   return true;
 }
 
-function saveState({ broadcast = true } = {}) {
+function saveState({ broadcast = true, locked = false } = {}) {
   if (!state) return;
   if (persistenceBlocked) {
     toast('기존 데이터 보호 중입니다. 원본 JSON을 백업하고 호환되는 백업을 불러와주세요.');
@@ -363,7 +479,7 @@ function saveState({ broadcast = true } = {}) {
     toast('브라우저 저장 공간이 부족합니다. 사진을 줄이거나 JSON 백업 후 정리해주세요.');
     return false;
   }
-  publishPublicState({ broadcast });
+  publishPublicState({ broadcast, locked });
   return true;
 }
 
@@ -639,7 +755,7 @@ function render() {
         <div class="top-actions"><span class="live-chip"><span></span>${esc(screenModeMeta[state.displayMode].label)}</span><button class="btn screen-launch" data-action="open-screen">프로젝터 열기</button><button class="btn ghost" data-action="lock">잠금</button></div>
       </header>
       <nav class="tabs" aria-label="주요 메뉴">
-        ${[['live', '실시간 진행'], ['questions', '문제 편집'], ['settings', '행사·슬라이드 설정']]
+        ${[['live', '실시간 진행'], ['questions', '문제 편집'], ['sequence', '행사 구성'], ['settings', '행사·슬라이드 설정']]
           .map(([id, label]) => `<button class="tab ${state.tab === id ? 'active' : ''}" data-tab="${id}" aria-current="${state.tab === id ? 'page' : 'false'}">${label}</button>`).join('')}
       </nav>
       <main class="workspace">${persistenceBlocked ? '<p class="overflow-notice" role="alert">저장 데이터를 읽을 수 없거나 더 최신 버전입니다. 원본은 보존되어 있으며 변경은 저장되지 않습니다. 설정에서 JSON 백업 후 호환되는 파일을 불러와주세요.</p>' : ''}${renderTab()}</main>
@@ -653,6 +769,7 @@ function render() {
 
 function renderTab() {
   if (state.tab === 'questions') return renderQuestions();
+  if (state.tab === 'sequence') return renderSequence();
   if (state.tab === 'settings') return renderSettings();
   return renderLive();
 }
@@ -660,6 +777,7 @@ function renderTab() {
 function renderPreview() {
   const question = currentQuestion();
   const mode = state.displayMode;
+  if (mode === 'screen') return renderScreenContent(currentScreen(), true);
   if (mode === 'rules') {
     const rules = state.messages.rules.split(/\r?\n/).filter(Boolean).slice(0, 6).map(rule => safeText(rule, 180));
     return `<div class="preview-scene preview-rules"><p>HOW TO PLAY</p><strong>진행 안내</strong><ol>${rules.map(rule => `<li>${esc(rule)}</li>`).join('')}</ol></div>`;
@@ -674,47 +792,130 @@ function renderPreview() {
   const image = safeImage(question.image);
   return `
     <div class="preview-question-scene ${state.answerVisible ? 'show-answer' : ''}">
-      <div class="preview-topline"><span>${esc(meta.label)}</span><span>${state.currentIndex + 1} / ${state.questions.length}</span></div>
+      <div class="preview-topline"><span>${esc(meta.label)}</span><span>${state.sequence.slice(0, state.sequenceIndex + 1).filter(item => item.type === 'question').length} / ${state.sequence.filter(item => item.type === 'question').length}</span></div>
       <div class="preview-question-content ${image ? 'has-image' : ''}">${image ? `<img class="preview-question-image" src="${image}" alt="${esc(question.imageAlt || '문제 참고 이미지')}">` : ''}<div class="preview-question ${questionSizeClass(projectionText(question.question, 600))}">${multiline(projectionText(question.question, 600) || '문제를 준비 중입니다.')}</div></div>
       ${state.answerVisible ? `<div class="preview-answer"><small>정답</small><strong class="${answerSizeClass(projectionText(question.answer, 200))}">${multiline(projectionText(question.answer, 200) || '정답 미입력')}</strong>${question.explanation ? `<span>${multiline(projectionText(question.explanation, 400))}</span>` : ''}</div>` : ''}
       <div class="preview-bottomline"><span>${esc(question.title)}</span><strong data-timer-value class="${timerClass(state.timer)}">${formatTime(getTimerRemaining(state.timer))}</strong></div>
     </div>`;
 }
 
-function presentationAdvanceLabel() {
-  if (state.displayMode === 'lobby') return '오프닝 시작';
-  if (state.displayMode === 'opening') return '진행 안내 보기';
-  if (state.displayMode === 'rules') return `${state.currentIndex + 1}번 문제 시작`;
-  if (state.displayMode === 'break') return `${state.currentIndex + 1}번 문제로 돌아가기`;
-  if (state.displayMode === 'ending') return '대기 화면으로';
-  if (!state.answerVisible) return '정답 공개';
-  return state.currentIndex < state.questions.length - 1 ? '다음 문제' : '마침 화면';
+function currentRoundLabel() {
+  const screenRounds = { 'revival1-start': 'revival1', 'main-resume': 'main2', 'revival2-start': 'revival2', 'main3-start': 'main3', 'final-start': 'final' };
+  for (let index = state.sequenceIndex; index >= 0; index--) {
+    const item = state.sequence[index];
+    const round = item.type === 'question' ? state.questions.find(question => question.id === item.questionId)?.round : screenRounds[item.screenId];
+    if (round) return roundLabels[round];
+  }
+  return '라운드 미지정';
 }
 
 function renderLive() {
   const question = currentQuestion();
-  const total = state.questions.length;
-  const progress = total ? ((state.currentIndex + 1) / total) * 100 : 0;
-  const missingQuestions = state.questions.filter(item => !item.question || !item.answer || hasProjectionOverflow(item)).length;
+  const total = state.sequence.length;
+  const position = total ? state.sequenceIndex + 1 : 0;
   const remaining = getTimerRemaining(state.timer);
-  return `
-    <div class="live-layout">
-      <section class="stack">
-        <article class="card stage-card">
-          <div class="section-head stage-heading"><div><p class="eyebrow">프로젝터 미리보기</p><h2>${esc(screenModeMeta[state.displayMode].label)}</h2></div><button class="btn sm" data-action="open-screen">새 창으로 열기</button></div>
-          <div class="stage-preview" aria-label="프로젝터 화면 미리보기">${renderPreview()}</div>
-          ${question ? `<div class="primary-controls"><button class="btn timer-toggle" data-action="timer-toggle"><span>${state.timer.running ? '타이머 일시정지' : remaining <= 0 ? '타이머 다시 시작' : '타이머 시작'}</span><kbd>Space</kbd></button><button class="btn presentation-next" data-action="next-step" ${state.displayMode === 'question' && !state.answerVisible && !question.answer ? 'disabled' : ''}><span>${presentationAdvanceLabel()}</span><kbd>→</kbd></button></div>
-          <div class="transport-controls"><button class="btn" data-action="prev" ${state.currentIndex === 0 ? 'disabled' : ''}>← 이전 문제</button><button class="btn" data-action="reset-timer">시간 초기화</button><button class="btn" data-action="edit-current">현재 문제 수정</button><button class="btn" data-action="next" ${state.currentIndex >= total - 1 ? 'disabled' : ''}>다음 문제 →</button></div>` : `<div class="empty-state compact"><p>문제 편집에서 첫 문제를 추가해주세요.</p></div>`}
-        </article>
-        ${question ? `<article class="card current-question-card"><div class="stage-line"><div class="row">${categoryBadge(question)}<span class="question-index">전체 ${state.currentIndex + 1} / ${total}</span></div><span class="question-title">${esc(question.title)}</span></div>${question.image ? `<img class="operator-question-image" src="${safeImage(question.image)}" alt="${esc(question.imageAlt || '문제 참고 이미지')}">` : ''}<div class="operator-question ${questionSizeClass(question.question)}">${multiline(question.question || '아직 문제 내용이 입력되지 않았습니다.')}</div><div class="operator-answer visible"><span>진행자 전용 · 정답</span><strong>${multiline(question.answer || '미입력')}</strong>${question.explanation ? `<p>${multiline(question.explanation)}</p>` : ''}${question.acceptedAnswers ? `<p>인정 답안 · ${multiline(question.acceptedAnswers)}</p>` : ''}${question.judgeNote ? `<p>판정 메모 · ${multiline(question.judgeNote)}</p>` : ''}${question.note ? `<small>진행 메모 · ${multiline(question.note)}</small>` : ''}</div></article>` : ''}
-      </section>
-      <aside class="stack control-rail">
-        ${question ? `<article class="card timer-card"><div class="timer-status"><span data-timer-label>${remaining <= 0 ? '시간 종료' : '남은 시간'}</span><span>${question.seconds}초 문제</span></div><div class="timer ${timerClass(state.timer)}" data-timer-value>${formatTime(remaining)}</div><div class="timer-track"><div data-timer-progress></div></div><div class="timer-adjust"><button class="btn sm" data-action="timer-minus">-5초</button><button class="btn sm" data-action="reset-timer">초기화</button><button class="btn sm" data-action="timer-plus">+5초</button></div></article>` : ''}
-        <article class="card mode-card"><div class="section-head"><div><p class="eyebrow">PPT 대신 송출</p><h2>슬라이드 선택</h2></div></div><div class="mode-grid">${Object.entries(screenModeMeta).map(([id, meta]) => `<button class="mode-button ${state.displayMode === id ? 'active' : ''}" data-screen-mode="${id}" aria-pressed="${state.displayMode === id}"><span class="mode-dot"></span>${esc(meta.shortLabel)}</button>`).join('')}</div><p class="sub mode-help">대기·오프닝·안내·휴식·마침 슬라이드를 바로 송출할 수 있습니다.</p></article>
-        <article class="card overview-card"><div class="section-head"><div><p class="eyebrow">프레젠테이션 진행</p><h2>${total ? `${state.currentIndex + 1}번 문제` : '문제 없음'}</h2></div><strong>${Math.round(progress)}%</strong></div><div class="progress"><div style="width:${progress}%"></div></div><div class="stat-grid"><div class="stat"><span>전체 문제</span><strong>${total}</strong></div><div class="stat ${missingQuestions ? 'warning' : ''}"><span>확인 필요</span><strong>${missingQuestions}</strong></div></div></article>
-        <article class="card shortcut-card"><h2>진행 단축키</h2><div class="shortcut-list"><span><kbd>Space</kbd>타이머</span><span><kbd>A</kbd>정답</span><span><kbd>←</kbd><kbd>→</kbd>문제 이동</span><span><kbd>B</kbd>휴식</span><span><kbd>E</kbd>마침</span></div></article>
-      </aside>
-    </div>`;
+  const progress = total ? position / total * 100 : 0;
+  const title = sequenceItemLabel(state.sequence[state.sequenceIndex]);
+  return `<div class="live-layout"><section class="stack">
+    <article class="card stage-card"><div class="section-head stage-heading"><div><p class="eyebrow">프로젝터 미리보기 · ${position} / ${total}</p><h2>${esc(question ? question.title : currentScreen().title)}</h2></div><button class="btn sm" data-action="open-screen">새 창으로 열기</button></div>
+    <div class="stage-preview" aria-label="프로젝터 화면 미리보기">${renderPreview()}</div>
+    ${question ? `<div class="primary-controls"><button class="btn timer-toggle" data-action="timer-toggle"><span>${state.timer.running ? '타이머 일시정지' : '타이머 시작'}</span><kbd>Space</kbd></button><button class="btn presentation-next" data-action="toggle-answer" ${question.answer ? '' : 'disabled'}><span>${state.answerVisible ? '정답 숨기기' : '정답 공개'}</span><kbd>A</kbd></button></div>` : ''}
+    <div class="transport-controls sequence-transport"><button class="btn" data-action="prev" ${state.sequenceIndex <= 0 ? 'disabled' : ''}>← 이전 항목</button><button class="btn primary" data-action="next" ${state.sequenceIndex >= total - 1 ? 'disabled' : ''}>다음 항목 →</button></div>
+    ${question ? '<div class="row"><button class="btn sm ghost" data-action="reset-timer">시간 초기화 (R)</button><button class="btn sm ghost" data-action="edit-current">현재 문제 수정</button></div>' : ''}</article>
+    ${question ? `<article class="card current-question-card"><div class="stage-line"><div class="row">${categoryBadge(question)}<span class="question-index">${esc(currentRoundLabel())}</span></div><span class="question-title">${esc(question.id)}</span></div>${question.image ? `<img class="operator-question-image" src="${safeImage(question.image)}" alt="${esc(question.imageAlt || '문제 참고 이미지')}">` : ''}<div class="operator-question ${questionSizeClass(question.question)}">${multiline(question.question || '아직 문제 내용이 입력되지 않았습니다.')}</div><div class="operator-answer visible"><span>진행자 전용 · 정답</span><strong>${multiline(question.answer || '미입력')}</strong>${question.explanation ? `<p>${multiline(question.explanation)}</p>` : ''}${question.acceptedAnswers ? `<p>인정 답안 · ${multiline(question.acceptedAnswers)}</p>` : ''}${question.judgeNote ? `<p>판정 메모 · ${multiline(question.judgeNote)}</p>` : ''}${question.note ? `<small>진행 메모 · ${multiline(question.note)}</small>` : ''}</div></article>` : ''}
+    </section><aside class="stack control-rail">
+    <article class="card overview-card"><p class="eyebrow">행사 진행</p><div class="section-head"><h2>${esc(currentRoundLabel())}</h2><strong>${position} / ${total}</strong></div><div class="progress"><div style="width:${progress}%"></div></div><p class="sub">현재 · ${esc(title)}</p><div class="next-item"><small>다음 항목</small><strong>${esc(sequenceItemLabel(state.sequence[state.sequenceIndex + 1]))}</strong></div></article>
+    ${question ? `<article class="card timer-card"><div class="timer-status"><span data-timer-label>${remaining <= 0 ? '시간 종료' : '남은 시간'}</span><span>${question.timeLimit}초 문제</span></div><div class="timer ${timerClass(state.timer)}" data-timer-value>${formatTime(remaining)}</div><div class="timer-track"><div data-timer-progress></div></div><div class="timer-adjust"><button class="btn sm" data-action="timer-minus">-5초</button><button class="btn sm" data-action="reset-timer">초기화</button><button class="btn sm" data-action="timer-plus">+5초</button></div></article>` : '<article class="card note-card"><strong>안내 화면 송출 중</strong><p>문제·정답·타이머는 표시하지 않습니다. 다음 항목으로 이동해 진행하세요.</p></article>'}
+    <article class="card shortcut-card"><h2>진행 단축키</h2><div class="shortcut-list"><span><kbd>Space</kbd>타이머</span><span><kbd>A</kbd>정답 공개/숨김</span><span><kbd>←</kbd><kbd>→</kbd>항목 이동</span><span><kbd>R</kbd>타이머 초기화</span></div></article>
+    </aside></div>`;
+}
+
+function renderScreenContent(screen, preview = false) {
+  const safe = publicScreen(screen);
+  return `<section class="${preview ? 'preview-scene' : 'screen-message'} custom-screen-content slide-${safe.style}"><h1>${esc(safe.title)}</h1>${safe.subtitle ? `<h2>${esc(safe.subtitle)}</h2>` : ''}${safe.description ? `<div class="slide-description ${safe.description.length > 500 ? 'long' : ''}">${multiline(safe.description)}</div>` : ''}${safe.emphasis ? `<strong class="slide-emphasis">${esc(safe.emphasis)}</strong>` : ''}</section>`;
+}
+
+function renderSequence() {
+  return `<div class="content-layout"><section class="card content-card"><div class="section-head"><div><p class="eyebrow">PPT처럼 구성하기</p><h2>행사 구성</h2><p class="sub">${state.sequence.length}개 항목 · 현재 위치 ${Math.max(0, state.sequenceIndex + 1)}</p></div><button class="btn" data-action="sequence-auto">사용 문제로 자동 구성</button></div>
+    <p class="sub">안내 화면과 문제를 원하는 위치에 배치하세요. 문제 목록의 순서를 바꿔도 이 구성은 유지됩니다.</p><div class="q-list">
+    ${state.sequence.map((item, index) => {
+      const question = item.type === 'question' ? state.questions.find(q => q.id === item.questionId) : null;
+      const missing = item.type === 'question' ? !question : !state.customScreens.some(screen => screen.id === item.screenId);
+      return `<article class="q-item ${state.sequenceIndex === index ? 'current' : ''}"><div class="q-no">${index + 1}</div><div class="q-copy"><strong>${esc(sequenceItemLabel(item))}</strong><span>${item.type === 'question' ? '문제' : '안내 화면'}${question ? ` · ${esc(roundLabels[question.round] || '미지정')} · ${usageLabels[question.usageStatus]}` : ''}${missing ? ' · 참조 누락: 수정 필요' : ''}</span></div><div class="q-actions"><button class="btn sm" data-sequence-edit="up" data-index="${index}" aria-label="항목 ${index + 1} 위로" ${index ? '' : 'disabled'}>↑</button><button class="btn sm" data-sequence-edit="down" data-index="${index}" aria-label="항목 ${index + 1} 아래로" ${index === state.sequence.length - 1 ? 'disabled' : ''}>↓</button><button class="btn sm" data-sequence-go="${index}">이동</button><button class="btn sm danger-ghost" data-sequence-edit="remove" data-index="${index}">구성에서 빼기</button></div></article>`;
+    }).join('') || '<div class="empty-state"><p>구성이 비어 있습니다. 오른쪽에서 항목을 추가해주세요.</p></div>'}</div></section>
+    <aside class="stack"><article class="card"><h2>항목 추가</h2><p class="sub">선택한 항목을 구성 마지막에 추가합니다.</p><div class="form-grid one-column"><div class="field"><label for="sequence-question">문제 선택</label><select id="sequence-question"><option value="">문제를 선택하세요</option>${state.questions.filter(q => q.usageStatus !== 'disabled').map(q => `<option value="${esc(q.id)}">${esc(`${q.id} · ${q.title || q.question || '미입력'} · ${usageLabels[q.usageStatus]}`)}</option>`).join('')}</select></div><button class="btn" data-action="sequence-add-question">문제 추가</button><div class="field"><label for="sequence-screen">안내 화면 선택</label><select id="sequence-screen">${state.customScreens.map(screen => `<option value="${esc(screen.id)}">${esc(screen.title || screen.id)}</option>`).join('')}</select></div><button class="btn" data-action="sequence-add-screen">화면 추가</button></div></article>
+    <article class="card"><div class="section-head"><h2>안내 화면 편집</h2><button class="btn sm" data-action="add-screen">+ 새 화면</button></div><div class="screen-library">${state.customScreens.map(screen => `<button class="btn ghost" data-edit-screen="${esc(screen.id)}">${esc(screen.title || '(제목 없음)')}<small>${esc(screen.id)}</small></button>`).join('')}</div></article></aside></div>`;
+}
+
+function activateSequence(next, index) {
+  next.sequenceIndex = next.sequence.length ? Math.min(Math.max(0, index), next.sequence.length - 1) : -1;
+  const item = next.sequence[next.sequenceIndex];
+  const questionIndex = item?.type === 'question' ? next.questions.findIndex(question => question.id === item.questionId) : -1;
+  next.displayMode = questionIndex >= 0 ? 'question' : 'screen';
+  if (questionIndex >= 0) next.currentIndex = questionIndex;
+  next.answerVisible = false;
+  next.timer = { remaining: questionIndex >= 0 ? next.questions[questionIndex].timeLimit : 0, running: false, endAt: null };
+}
+
+function goSequence(index) {
+  if (!Number.isInteger(index) || index < 0 || index >= state.sequence.length) return;
+  update(next => activateSequence(next, index));
+}
+
+function appendSequence(type, id) {
+  if (!id || state.sequence.length >= 2000) return toast('추가할 항목을 선택해주세요. 구성은 최대 2,000개입니다.');
+  if (type === 'question') {
+    const question = state.questions.find(item => item.id === id);
+    if (!question || question.usageStatus === 'disabled') return toast('미사용 문제는 구성에 추가할 수 없습니다.');
+    if (question.usageStatus === 'reserve' && !confirm('예비 문제를 본 행사 구성에 추가할까요?')) return;
+  } else if (type !== 'screen' || !state.customScreens.some(screen => screen.id === id)) return;
+  update(next => {
+    next.sequence.push(type === 'question' ? { type, questionId: id } : { type, screenId: id });
+    if (next.sequenceIndex < 0) activateSequence(next, 0);
+  });
+}
+
+function editSequence(index, action) {
+  if (!state.sequence[index]) return;
+  const target = action === 'up' ? index - 1 : index + 1;
+  if (action !== 'remove' && (target < 0 || target >= state.sequence.length)) return;
+  const active = state.sequence[state.sequenceIndex];
+  update(next => {
+    if (action === 'remove') next.sequence.splice(index, 1);
+    else [next.sequence[index], next.sequence[target]] = [next.sequence[target], next.sequence[index]];
+    const position = next.sequence.indexOf(active);
+    if (position >= 0) next.sequenceIndex = position;
+    else activateSequence(next, Math.min(index, next.sequence.length - 1));
+  });
+}
+
+function openScreenEditor(id = null) {
+  const screen = id ? state.customScreens.find(item => item.id === id) : null;
+  if (id && !screen) return;
+  modal = { type: 'screen', screen: screen ? { ...screen } : { id: null, title: '', subtitle: '', description: '', emphasis: '', style: 'blue' } };
+  render();
+}
+
+function renderScreenEditor() {
+  const screen = modal.screen;
+  return `<div class="modal-backdrop" data-action="close-backdrop"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="section-head"><h2 id="modal-title">안내 화면 편집</h2><button class="btn" data-action="close-modal">닫기</button></div><form id="screen-form" class="form-grid">${[['title', '제목', 100], ['subtitle', '부제', 150], ['description', '설명', 2000], ['emphasis', '강조 문구', 150]].map(([field, label, max]) => `<div class="field wide"><label for="screen-${field}">${label}</label>${field === 'description' ? `<textarea id="screen-${field}" maxlength="${max}">${esc(screen[field])}</textarea>` : `<input id="screen-${field}" maxlength="${max}" value="${esc(screen[field])}">`}</div>`).join('')}<div class="field wide"><label for="screen-style">화면 스타일</label><select id="screen-style">${selectOptions(screenStyles, screen.style)}</select></div><p class="field-help wide">설명은 최대 2,000자 저장되며 프로젝터에는 1,200자까지 표시됩니다. 빈칸은 빈칸으로 저장됩니다. 이 화면을 사용하는 모든 구성 항목에 반영됩니다.</p><div class="wide modal-actions"><button class="btn" type="button" data-action="close-modal">취소</button><button class="btn primary" type="submit">화면 저장</button></div></form></section></div>`;
+}
+
+function saveScreen() {
+  if (modal?.type !== 'screen') return;
+  if (!modal.screen.id && state.customScreens.length >= 200) return toast('안내 화면은 최대 200개입니다.');
+  const fields = Object.fromEntries(['title','subtitle','description','emphasis','style'].map(field => [field, document.getElementById(`screen-${field}`).value.trim()]));
+  const data = { id: modal.screen.id || createId(), ...publicScreen(fields), description: safeText(fields.description, 2000) };
+  const previous = structuredClone(state);
+  const index = state.customScreens.findIndex(screen => screen.id === data.id);
+  if (index < 0) state.customScreens.push(data);
+  else state.customScreens[index] = data;
+  const messageKey = Object.keys(legacyScreenIds).find(key => legacyScreenIds[key] === data.id);
+  if (messageKey) state.messages[messageKey] = data.id === 'rules' ? data.description : data.title;
+  if (!saveState()) { state = previous; return; }
+  modal = null;
+  render();
+  toast('안내 화면을 저장했습니다.');
 }
 
 function renderQuestions() {
@@ -792,6 +993,11 @@ function renderScreen() {
   const mode = SCREEN_MODES.has(publicState.displayMode) ? publicState.displayMode : 'lobby';
   const event = publicState.event || {};
   const messages = publicState.messages || {};
+  if (mode === 'screen') {
+    app.innerHTML = `<main class="screen-mode custom-slide slide-${esc(publicScreen(publicState.screen || {}).style)}"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title || '')}</div></header>${renderScreenContent(publicState.screen || {})}<footer class="screen-simple-footer"><span>${esc(messages.tagline || '')}</span><span>SIGMA</span></footer>${renderScreenTool()}</main>`;
+    bindScreenEvents();
+    return;
+  }
   if (mode === 'rules') {
     const rules = safeText(messages.rules, 1200).split(/\r?\n/).filter(Boolean).slice(0, 6).map(rule => safeText(rule, 180));
     app.innerHTML = `<main class="screen-mode screen-rules"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title ?? '시그마 수학 골든벨')}</div><div class="screen-status"><span></span>진행 안내</div></header><section class="screen-rules-wrap"><p>HOW TO PLAY</p><h1>진행 안내</h1><ol>${rules.map(rule => `<li>${esc(rule)}</li>`).join('')}</ol></section><footer class="screen-simple-footer"><span>${esc(messages.tagline || '')}</span><span>SIGMA</span></footer>${renderScreenTool()}</main>`;
@@ -830,6 +1036,7 @@ function bindScreenEvents() {
 }
 
 function renderModal() {
+  if (modal.type === 'screen') return renderScreenEditor();
   if (modal.type !== 'question') return '';
   const question = modal.question;
   const selects = [
@@ -871,6 +1078,10 @@ function captureQuestionDraft() {
   if (altInput) modal.question.imageAlt = altInput.value;
 }
 function bindEvents() {
+  document.getElementById('screen-form')?.addEventListener('submit', event => { event.preventDefault(); saveScreen(); });
+  document.querySelectorAll('[data-edit-screen]').forEach(element => element.addEventListener('click', () => openScreenEditor(element.dataset.editScreen)));
+  document.querySelectorAll('[data-sequence-go]').forEach(element => element.addEventListener('click', () => goSequence(Number(element.dataset.sequenceGo))));
+  document.querySelectorAll('[data-sequence-edit]').forEach(element => element.addEventListener('click', () => editSequence(Number(element.dataset.index), element.dataset.sequenceEdit)));
   document.getElementById('question-form')?.addEventListener('submit', event => { event.preventDefault(); saveQuestion(); });
   document.getElementById('question-filters')?.addEventListener('submit', event => {
     event.preventDefault();
@@ -904,12 +1115,19 @@ function focusModal() {
 
 function handleAction(action) {
   const question = currentQuestion();
+  if (action === 'add-screen') return openScreenEditor();
+  if (action === 'sequence-add-question') return appendSequence('question', document.getElementById('sequence-question').value);
+  if (action === 'sequence-add-screen') return appendSequence('screen', document.getElementById('sequence-screen').value);
+  if (action === 'sequence-auto') {
+    if (!confirm('현재 행사 구성을 사용 문제 기준으로 다시 만들까요? 진행 위치도 처음으로 돌아갑니다.')) return;
+    return update(next => { next.sequence = buildAutoSequence(next.questions); activateSequence(next, 0); });
+  }
   if (action === 'clear-filters') { questionFilters = {}; return render(); }
   if (action === 'open-screen') return openScreen();
   if (action === 'lock') return lockConsole();
   if (action === 'export') return exportData();
-  if (action === 'prev') return goQuestion(state.currentIndex - 1);
-  if (action === 'next') return goQuestion(state.currentIndex + 1);
+  if (action === 'prev') return goSequence(state.sequenceIndex - 1);
+  if (action === 'next') return goSequence(state.sequenceIndex + 1);
   if (action === 'next-step') return advancePresentation();
   if (action === 'toggle-answer') return toggleAnswer();
   if (action === 'reset-timer') return resetTimer();
@@ -952,10 +1170,9 @@ function lockConsole() {
   state.timer.running = false;
   state.timer.endAt = null;
   state.answerVisible = false;
-  state.displayMode = 'lobby';
   clearInterval(timerHandle);
   timerHandle = null;
-  saveState();
+  saveState({ locked: true });
   sessionStorage.removeItem(AUTH_SESSION_KEY);
   state = null;
   authMessage = '';
@@ -963,36 +1180,25 @@ function lockConsole() {
 }
 
 function setScreenMode(mode) {
-  if (!SCREEN_MODES.has(mode)) return;
-  if (mode !== 'question') {
-    pauseTimer(false);
-    state.answerVisible = false;
-  }
-  update(next => { next.displayMode = mode; });
+  const screenId = legacyScreenIds[mode];
+  const index = state.sequence.findIndex(item => item.type === 'screen' && item.screenId === screenId);
+  if (index < 0) return toast('행사 구성에 해당 화면을 먼저 추가해주세요.');
+  goSequence(index);
 }
 
 function advancePresentation() {
-  if (state.displayMode === 'lobby') return setScreenMode('opening');
-  if (state.displayMode === 'opening') return setScreenMode('rules');
-  if (state.displayMode === 'rules' || state.displayMode === 'break') return setScreenMode('question');
-  if (state.displayMode === 'ending') return setScreenMode('lobby');
-  if (!state.answerVisible) return toggleAnswer();
-  if (state.currentIndex < state.questions.length - 1) return goQuestion(state.currentIndex + 1);
-  return setScreenMode('ending');
+  goSequence(state.sequenceIndex + 1);
 }
 
 function goQuestion(index) {
-  if (index < 0 || index >= state.questions.length) return;
-  clearInterval(timerHandle);
-  update(next => {
-    next.currentIndex = index;
-    next.answerVisible = false;
-    next.displayMode = 'question';
-    next.timer = { remaining: Number(next.questions[index].seconds || 30), running: false, endAt: null };
-  });
+  const question = state.questions[index];
+  if (!question) return;
+  const sequenceIndex = state.sequence.findIndex(item => item.type === 'question' && item.questionId === question.id);
+  if (sequenceIndex < 0) return toast('이 문제를 행사 구성에 먼저 추가해주세요.');
+  goSequence(sequenceIndex);
 }
-
 function toggleAnswer() {
+  if (!currentQuestion()) return;
   if (!currentQuestion()?.answer) return toast('정답을 먼저 입력해주세요.');
   const opening = !state.answerVisible;
   if (opening && state.timer.running) pauseTimer(false);
@@ -1024,6 +1230,7 @@ function pauseTimer(shouldRender = true) {
 }
 
 function resetTimer(shouldRender = true) {
+  if (!currentQuestion()) return;
   clearInterval(timerHandle);
   timerHandle = null;
   const question = currentQuestion();
@@ -1033,6 +1240,7 @@ function resetTimer(shouldRender = true) {
 }
 
 function adjustTimer(delta) {
+  if (!currentQuestion()) return;
   if (state.timer.running) {
     state.timer.endAt = Math.max(Date.now(), state.timer.endAt + delta * 1000);
     state.timer.remaining = getTimerRemaining(state.timer);
@@ -1134,7 +1342,7 @@ function saveQuestion() {
     state = previous;
     return toast('전체 사진 용량이 너무 큽니다. 사진을 줄인 뒤 다시 저장해주세요.');
   }
-  if (index === state.currentIndex && !state.timer.running) state.timer.remaining = data.timeLimit;
+  if (currentQuestion()?.id === data.id && !state.timer.running) state.timer.remaining = data.timeLimit;
   if (!saveState()) { state = previous; return; }
   modal = null;
   render();
@@ -1149,10 +1357,7 @@ function deleteQuestion(id) {
     next.questions.splice(index, 1);
     next.questions.forEach((question, position) => { question.order = position + 1; });
     next.currentIndex = currentId === id ? Math.min(index, Math.max(0, next.questions.length - 1)) : Math.max(0, next.questions.findIndex(question => question.id === currentId));
-    if (currentId === id) {
-      next.answerVisible = false;
-      next.timer = { remaining: next.questions[next.currentIndex]?.timeLimit || 30, running: false, endAt: null };
-    }
+    if (currentId === id) activateSequence(next, next.sequenceIndex);
   });
 }
 
@@ -1160,6 +1365,7 @@ function saveSettings() {
   const rulesText = document.getElementById('message-rules').value.trim();
   const previousEvent = { ...state.event };
   const previousMessages = { ...state.messages };
+  const previousScreens = structuredClone(state.customScreens);
   state.event.title = safeText(document.getElementById('event-title').value.trim(), 100);
   state.event.date = safeText(document.getElementById('event-date').value.trim(), 100);
   state.event.place = safeText(document.getElementById('event-place').value.trim(), 100);
@@ -1169,9 +1375,14 @@ function saveSettings() {
   state.messages.rules = safeText(rulesText, 2000);
   state.messages.break = safeText(document.getElementById('message-break').value.trim(), 100);
   state.messages.ending = safeText(document.getElementById('message-ending').value.trim(), 100);
+  for (const [key, id] of Object.entries(legacyScreenIds)) {
+    const screen = state.customScreens.find(item => item.id === id);
+    if (screen) screen[id === 'rules' ? 'description' : 'title'] = state.messages[key];
+  }
   if (!saveState()) {
     state.event = previousEvent;
     state.messages = previousMessages;
+    state.customScreens = previousScreens;
     return render();
   }
   render();
@@ -1236,7 +1447,7 @@ function importData(event) {
       if (totalImageDataLength(imported.questions) > MAX_TOTAL_IMAGE_DATA_LENGTH) {
         throw new Error('image-storage-limit');
       }
-      try { localStorage.setItem(PRE_IMPORT_BACKUP_KEY, JSON.stringify(state)); } catch {}
+      try { localStorage.setItem(PRE_IMPORT_BACKUP_KEY, persistenceBlocked ? localStorage.getItem(PRIVATE_STORAGE_KEY) : JSON.stringify(state)); } catch {}
       const previous = state;
       const wasBlocked = persistenceBlocked;
       persistenceBlocked = false;
@@ -1244,13 +1455,13 @@ function importData(event) {
       state.timer.running = false;
       state.timer.endAt = null;
       state.answerVisible = false;
-      state.displayMode = 'lobby';
       if (!saveState()) {
         state = previous;
         persistenceBlocked = wasBlocked;
         throw new Error('storage-limit');
       }
       render();
+      syncTicker();
       toast('백업을 안전하게 불러왔습니다.');
     } catch (error) {
       alert(error.message === 'image-storage-limit' || error.message === 'storage-limit'
@@ -1273,16 +1484,15 @@ window.addEventListener('keydown', event => {
     return;
   }
   if (!state || state.tab !== 'live' || modal || event.repeat) return;
-  if (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(document.activeElement?.tagName)) return;
+  if (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable || event.ctrlKey || event.metaKey || event.altKey) return;
   if (event.code === 'Space') {
     event.preventDefault();
     state.timer.running ? pauseTimer() : startTimer();
   }
   if (event.key.toLowerCase() === 'a') toggleAnswer();
-  if (event.key.toLowerCase() === 'b') setScreenMode('break');
-  if (event.key.toLowerCase() === 'e') setScreenMode('ending');
-  if (event.key === 'ArrowLeft') goQuestion(state.currentIndex - 1);
-  if (event.key === 'ArrowRight') advancePresentation();
+  if (event.key.toLowerCase() === 'r') resetTimer();
+  if (event.key === 'ArrowLeft') { event.preventDefault(); goSequence(state.sequenceIndex - 1); }
+  if (event.key === 'ArrowRight') { event.preventDefault(); advancePresentation(); }
 });
 
 window.addEventListener('keydown', event => {
