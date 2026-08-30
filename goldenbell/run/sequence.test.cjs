@@ -36,7 +36,7 @@ test('auto sequence excludes reserve/disabled and inserts round screens without 
 test('reload/backup retains exact duplicate occurrence, custom screen edits and blank values', () => {
   const h=fixture();
   h.run(`goSequence(4); state.customScreens[0].title=''; state.messages.lobby=''; state.customScreens[0].subtitle=''; state.customScreens[0].description='직접 수정'; saveState(); before=JSON.stringify(state); state=loadPrivateState();`);
-  assert.equal(h.run('JSON.stringify(state)'),h.run('before'));
+  assert.deepEqual(h.json('state'),JSON.parse(h.run('before')));
   assert.equal(h.run('state.sequenceIndex'),4);
   assert.equal(h.run('state.customScreens[0].title'),'');
   assert.deepEqual(h.json('normalizeState(JSON.parse(JSON.stringify(state)))'),h.json('state'));

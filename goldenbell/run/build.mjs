@@ -4,10 +4,11 @@ import { fileURLToPath } from 'node:url';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const output = join(root, 'dist', 'server', 'index.js');
-const files = ['index.html', 'app.js', 'styles.css', 'favicon.svg', 'og.png'];
+const files = ['index.html', 'app.js', 'runtime.js', 'styles.css', 'favicon.svg', 'og.png'];
 const contentTypes = {
   'index.html': 'text/html; charset=utf-8',
   'app.js': 'text/javascript; charset=utf-8',
+  'runtime.js': 'text/javascript; charset=utf-8',
   'styles.css': 'text/css; charset=utf-8',
   'favicon.svg': 'image/svg+xml',
   'og.png': 'image/png',

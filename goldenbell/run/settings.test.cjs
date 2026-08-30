@@ -19,7 +19,8 @@ const context = vm.createContext({
     querySelector: () => null, querySelectorAll: () => [],
   },
 });
-const source = fs.readFileSync(`${__dirname}/app.js`, 'utf8');
+vm.runInContext(fs.readFileSync(`${__dirname}/runtime.js`, 'utf8').replace(/^export \{.*\};$/m, ''), context);
+const source = fs.readFileSync(`${__dirname}/app.js`, 'utf8').replace(/^import .*;$/m, '');
 vm.runInContext(source.slice(0, source.lastIndexOf('\nif (IS_SCREEN) {')) + `
   render = () => {};
   toast = () => {};
