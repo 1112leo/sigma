@@ -6,6 +6,14 @@ const AUTH_ATTEMPT_KEY = 'sigma-goldenbell-attempts-v1';
 const PROJECTOR_SESSION_KEY = 'sigma-goldenbell-projector-session-v1';
 const PRE_IMPORT_BACKUP_KEY = 'sigma-goldenbell-pre-import-v1';
 const CHANNEL_NAME = 'sigma-goldenbell-projector-v2';
+const SCHEMA_VERSION = 1;
+const questionEnums = {
+  category: ['basic', 'hard', 'revival', 'tiebreak'],
+  round: [null, 'main1', 'revival1', 'main2', 'revival2', 'main3', 'final'],
+  usageStatus: ['active', 'reserve', 'disabled'],
+  difficulty: ['easy', 'normal', 'hard', 'extreme'],
+  reviewStatus: ['draft', 'self-reviewed', 'peer-reviewed', 'final'],
+};
 const PBKDF2_ITERATIONS = 210000;
 const MAX_IMAGE_FILE_BYTES = 12 * 1024 * 1024;
 const MAX_IMAGE_DATA_LENGTH = 900 * 1024;
@@ -39,6 +47,7 @@ let publicState = null;
 let timerHandle = null;
 let modal = null;
 let authMessage = '';
+let persistenceBlocked = false;
 
 function createId() {
   if (crypto.randomUUID) return crypto.randomUUID();
@@ -55,7 +64,7 @@ function createPlaceholderQuestions() {
   ];
   let order = 1;
   return specs.flatMap(([category, count]) =>
-    Array.from({ length: count }, (_, index) => ({
+    Array.from({ length: count }, (_, index) => migrateQuestion({
       id: createId(),
       order: order++,
       category,
@@ -67,12 +76,13 @@ function createPlaceholderQuestions() {
       image: '',
       imageAlt: '',
       seconds: category === 'tiebreak' ? 45 : 30,
-    }))
+    }, order - 2))
   );
 }
 
 function defaultState() {
   return {
+    schemaVersion: SCHEMA_VERSION,
     event: {
       title: '2026 시그마 수학 골든벨',
       date: '2026.10.23(금) 15:50~17:30',
@@ -131,34 +141,76 @@ function clampNumber(value, min, max, fallback) {
   return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
 }
 
+function validTimeLimit(value) {
+  return ['number', 'string'].includes(typeof value) && String(value).trim() !== '' && Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 600;
+}
+
+function validateQuestion(question) {
+  const errors = [];
+  for (const [field, values] of Object.entries(questionEnums)) {
+    if (!values.includes(question[field])) errors.push({ field, message: `${field}: 허용되지 않은 값입니다.` });
+  }
+  if (!validTimeLimit(question.timeLimit)) errors.push({ field: 'timeLimit', message: '제한시간은 1~600초의 정수여야 합니다.' });
+  return errors;
+}
+
+function validTimestamp(value) {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+// This is the single entry point for legacy question data, including old JSON backups.
+// seconds remains a synchronized compatibility alias; timeLimit is authoritative.
+function migrateQuestion(candidate, index = 0, now = new Date().toISOString()) {
+  const item = candidate && typeof candidate === 'object' ? candidate : {};
+  const enumValue = (field, fallback) => questionEnums[field].includes(item[field]) ? item[field] : fallback;
+  const category = enumValue('category', 'basic');
+  const rawTime = item.timeLimit ?? item.seconds;
+  const timeLimit = validTimeLimit(rawTime) ? Number(rawTime) : category === 'tiebreak' ? 45 : 30;
+  const createdAt = validTimestamp(item.createdAt) ? item.createdAt : now;
+  return {
+    id: typeof item.id === 'string' && item.id.trim() ? item.id : createId(),
+    order: Number.isInteger(item.order) && item.order > 0 ? item.order : index + 1,
+    category,
+    round: enumValue('round', null),
+    title: typeof item.title === 'string' ? safeText(item.title, 100) : `${categoryMeta[category].label} ${index + 1}`,
+    question: safeText(item.question, 2000),
+    answer: safeText(item.answer, 500),
+    explanation: safeText(item.explanation, 1500),
+    acceptedAnswers: safeText(item.acceptedAnswers, 2000),
+    judgeNote: safeText(item.judgeNote, 2000),
+    author: safeText(item.author, 100),
+    note: safeText(item.note, 2000),
+    difficulty: enumValue('difficulty', 'normal'),
+    usageStatus: enumValue('usageStatus', 'active'),
+    reviewStatus: enumValue('reviewStatus', 'draft'),
+    timeLimit,
+    seconds: timeLimit,
+    image: safeImage(item.image),
+    imageAlt: safeText(item.imageAlt, 160),
+    createdAt,
+    updatedAt: validTimestamp(item.updatedAt) ? item.updatedAt : createdAt,
+  };
+}
+
+function migrateState(candidate) {
+  const raw = candidate && typeof candidate === 'object' ? candidate : {};
+  const version = raw.schemaVersion ?? 0;
+  if (!Number.isInteger(version) || version < 0 || version > SCHEMA_VERSION) throw new Error('unsupported-schema');
+  if (Array.isArray(raw.questions) && raw.questions.length > 500) throw new Error('question-limit');
+  const now = new Date().toISOString();
+  return {
+    ...raw,
+    schemaVersion: SCHEMA_VERSION,
+    ...(Array.isArray(raw.questions) ? { questions: raw.questions.map((question, index) => migrateQuestion(question, index, now)) } : {}),
+  };
+}
+
 function normalizeState(candidate) {
   const base = defaultState();
-  const raw = candidate && typeof candidate === 'object' ? candidate : {};
+  const raw = migrateState(candidate);
   const rawEvent = raw.event && typeof raw.event === 'object' ? raw.event : {};
   const rawMessages = raw.messages && typeof raw.messages === 'object' ? raw.messages : {};
-  const questions = Array.isArray(raw.questions)
-    ? raw.questions.slice(0, 500).map((question, index) => {
-        const item = question && typeof question === 'object' ? question : {};
-        const category = Object.hasOwn(categoryMeta, item.category) ? item.category : 'basic';
-        return {
-          id: /^[\w-]{8,80}$/.test(String(item.id || '')) ? String(item.id) : createId(),
-          order: index + 1,
-          category,
-          title: (() => {
-            const title = safeText(item.title, 100);
-            if (category === 'revival' && /^패자부활 \d+$/.test(title)) return title.replace('패자부활', '스페셜');
-            return title || `${categoryMeta[category].label} ${index + 1}`;
-          })(),
-          question: safeText(item.question, 2000),
-          answer: safeText(item.answer, 500),
-          explanation: safeText(item.explanation, 1500),
-          note: safeText(item.note, 2000),
-          image: safeImage(item.image),
-          imageAlt: safeText(item.imageAlt, 160).trim(),
-          seconds: Math.round(clampNumber(item.seconds, 1, 600, category === 'tiebreak' ? 45 : 30)),
-        };
-      })
-    : base.questions;
+  const questions = Array.isArray(raw.questions) ? raw.questions : base.questions;
   const currentIndex = questions.length
     ? Math.round(clampNumber(raw.currentIndex, 0, questions.length - 1, 0))
     : 0;
@@ -176,6 +228,7 @@ function normalizeState(candidate) {
     }
   }
   return {
+    schemaVersion: SCHEMA_VERSION,
     event: {
       title: settingText(rawEvent.title, 100, base.event.title),
       date: safeText(rawEvent.date, 100).trim(),
@@ -201,8 +254,13 @@ function normalizeState(candidate) {
 function loadPrivateState() {
   try {
     const raw = localStorage.getItem(PRIVATE_STORAGE_KEY);
-    return raw ? normalizeState(JSON.parse(raw)) : defaultState();
+    if (!raw) return defaultState();
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed?.questions)) throw new Error('invalid-backup');
+    return normalizeState(parsed);
   } catch {
+    // Never overwrite an unreadable or newer backup with an empty/default session.
+    persistenceBlocked = true;
     return defaultState();
   }
 }
@@ -289,6 +347,10 @@ function publishPublicState({ broadcast = true } = {}) {
 
 function saveState({ broadcast = true } = {}) {
   if (!state) return;
+  if (persistenceBlocked) {
+    toast('기존 데이터 보호 중입니다. 원본 JSON을 백업하고 호환되는 백업을 불러와주세요.');
+    return false;
+  }
   try {
     localStorage.setItem(PRIVATE_STORAGE_KEY, JSON.stringify(state));
   } catch {
@@ -574,7 +636,7 @@ function render() {
         ${[['live', '실시간 진행'], ['questions', '문제 편집'], ['settings', '행사·슬라이드 설정']]
           .map(([id, label]) => `<button class="tab ${state.tab === id ? 'active' : ''}" data-tab="${id}" aria-current="${state.tab === id ? 'page' : 'false'}">${label}</button>`).join('')}
       </nav>
-      <main class="workspace">${renderTab()}</main>
+      <main class="workspace">${persistenceBlocked ? '<p class="overflow-notice" role="alert">저장 데이터를 읽을 수 없거나 더 최신 버전입니다. 원본은 보존되어 있으며 변경은 저장되지 않습니다. 설정에서 JSON 백업 후 호환되는 파일을 불러와주세요.</p>' : ''}${renderTab()}</main>
     </div>
     ${modal ? renderModal() : ''}
     <div class="sr-only" aria-live="polite" id="live-region"></div>`;
@@ -776,6 +838,7 @@ function handleAction(action) {
   if (action === 'change-pin') return changePin();
   if (action === 'reset-all' && confirm('문제와 행사 설정을 모두 초기화할까요? 진행 PIN은 유지됩니다.')) {
     downloadBackup('before-reset');
+    persistenceBlocked = false;
     state = defaultState();
     saveState();
     return render();
@@ -948,6 +1011,8 @@ async function handleQuestionImage(event) {
 }
 
 function saveQuestion() {
+  if (!modal?.question) return;
+  if (!modal.question.id && state.questions.length >= 500) return toast('문제는 최대 500개까지 저장할 수 있습니다.');
   const category = document.getElementById('q-category').value;
   const seconds = Math.round(clampNumber(document.getElementById('q-seconds').value, 1, 600, 30));
   const questionText = document.getElementById('q-question').value.trim();
@@ -956,7 +1021,8 @@ function saveQuestion() {
   if (questionText.length > 600 || answerText.length > 200 || explanationText.length > 400) {
     return toast('프로젝터 가독성을 위해 문제 600자·정답 200자·해설 400자 이하로 줄여주세요.');
   }
-  const data = {
+  const data = migrateQuestion({
+    ...modal.question,
     id: modal.question.id || createId(),
     category: Object.hasOwn(categoryMeta, category) ? category : 'basic',
     title: safeText(document.getElementById('q-title').value.trim(), 100),
@@ -967,7 +1033,9 @@ function saveQuestion() {
     image: safeImage(modal.question.image),
     imageAlt: safeText(document.getElementById('q-image-alt').value.trim(), 160),
     seconds,
-  };
+    timeLimit: seconds,
+    updatedAt: new Date().toISOString(),
+  }, state.questions.length);
   const index = state.questions.findIndex(question => question.id === data.id);
   const isCurrent = index === state.currentIndex;
   const previousQuestions = state.questions.map(question => ({ ...question }));
@@ -1045,7 +1113,8 @@ async function changePin() {
 
 function downloadBackup(label = '') {
   if (!state) return;
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+  const backup = persistenceBlocked ? localStorage.getItem(PRIVATE_STORAGE_KEY) : JSON.stringify(state, null, 2);
+  const blob = new Blob([backup], { type: 'application/json' });
   const anchor = document.createElement('a');
   anchor.href = URL.createObjectURL(blob);
   const suffix = label ? `-${label}` : '';
@@ -1080,6 +1149,8 @@ function importData(event) {
       }
       try { localStorage.setItem(PRE_IMPORT_BACKUP_KEY, JSON.stringify(state)); } catch {}
       const previous = state;
+      const wasBlocked = persistenceBlocked;
+      persistenceBlocked = false;
       state = imported;
       state.timer.running = false;
       state.timer.endAt = null;
@@ -1087,6 +1158,7 @@ function importData(event) {
       state.displayMode = 'lobby';
       if (!saveState()) {
         state = previous;
+        persistenceBlocked = wasBlocked;
         throw new Error('storage-limit');
       }
       render();
