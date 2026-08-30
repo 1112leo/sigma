@@ -91,7 +91,7 @@ test('screen payload whitelist excludes questions, timer, next items and private
   assert.equal(payload.timer,null);
   assert.ok(!('sequence' in payload));
   assert.ok(!JSON.stringify(payload).includes('SECRET'));
-  assert.deepEqual(Object.keys(payload.screen).sort(),['title','subtitle','description','emphasis','style'].sort());
+  assert.deepEqual(Object.keys(payload.screen).sort(),['title','subtitle','description','emphasis','style','template'].sort());
 });
 
 test('keyboard navigation moves sequence, A reveals, inputs/contenteditable ignore shortcuts', () => {

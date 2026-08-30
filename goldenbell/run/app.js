@@ -471,7 +471,8 @@ function questionProgress() {
 }
 
 function publicScreen(screen) {
-  return { title: safeText(screen.title, 100), subtitle: safeText(screen.subtitle, 150), description: safeText(screen.description, 1200), emphasis: safeText(screen.emphasis, 150), style: Object.hasOwn(screenStyles, screen.style) ? screen.style : 'plain' };
+  const template = Object.entries(legacyScreenIds).find(([, id]) => id === screen.id)?.[0] || (Object.hasOwn(legacyScreenIds, screen.template) ? screen.template : '');
+  return { template, title: safeText(screen.title, 100), subtitle: safeText(screen.subtitle, 150), description: safeText(screen.description, 1200), emphasis: safeText(screen.emphasis, 150), style: Object.hasOwn(screenStyles, screen.style) ? screen.style : 'plain' };
 }
 
 function publishPublicState({ broadcast = true, locked = false } = {}) {
@@ -866,9 +867,10 @@ function renderLive() {
     ${question ? '<div class="row"><button class="btn sm ghost" data-action="reset-timer">시간 초기화 (R)</button><button class="btn sm ghost" data-action="edit-current">현재 문제 수정</button></div>' : ''}</article>
     ${question ? `<article class="card current-question-card"><div class="stage-line"><div class="row">${categoryBadge(question)}<span class="question-index">${esc(currentRoundLabel())}</span></div><span class="question-title">${esc(question.id)}</span></div>${question.image ? `<img class="operator-question-image" src="${safeImage(question.image)}" alt="${esc(question.imageAlt || '문제 참고 이미지')}">` : ''}<div class="operator-question ${questionSizeClass(question.question)}">${richText(question.question || '아직 문제 내용이 입력되지 않았습니다.')}</div><div class="operator-answer visible"><span>진행자 전용 · 정답</span><strong>${richText(question.answer || '미입력')}</strong>${question.explanation ? `<p>${richText(question.explanation)}</p>` : ''}${question.acceptedAnswers ? `<p>인정 답안 · ${multiline(question.acceptedAnswers)}</p>` : ''}${question.judgeNote ? `<p>판정 메모 · ${multiline(question.judgeNote)}</p>` : ''}${question.note ? `<small>진행 메모 · ${multiline(question.note)}</small>` : ''}</div></article>` : ''}
     ${renderRuntimeControls()}
-    </section><aside class="stack control-rail">${renderEventStatus()}
+    </section><aside class="stack control-rail">${renderSlideSelector()}
     <article class="card overview-card"><p class="eyebrow">행사 진행</p><div class="section-head"><h2>${esc(currentRoundLabel())}</h2><strong>${position} / ${total}</strong></div><div class="progress"><div style="width:${progress}%"></div></div><p class="sub">현재 · ${esc(title)}</p><div class="next-item"><small>다음 항목</small><strong>${esc(sequenceItemLabel(liveSequence[cursor + 1]))}</strong></div></article>
     ${question ? `<article class="card timer-card"><div class="timer-status"><span data-timer-label>${remaining <= 0 ? '시간 종료' : '남은 시간'}</span><span>${question.timeLimit}초 문제</span></div><div class="timer ${timerClass(state.timer)}" data-timer-value>${formatTime(remaining)}</div><form id="manual-timer-form" class="manual-timer"><label for="manual-timer">시간 직접 설정(초)</label><input id="manual-timer" type="number" min="0" max="600" step="1" value="${Math.ceil(remaining)}"><button class="btn sm" type="submit">적용</button></form><div class="timer-track"><div data-timer-progress></div></div><div class="timer-adjust"><button class="btn sm" data-action="timer-minus">-5초</button><button class="btn sm" data-action="reset-timer">초기화</button><button class="btn sm" data-action="timer-plus">+5초</button></div></article>` : '<article class="card note-card"><strong>안내 화면 송출 중</strong><p>문제·정답·타이머는 표시하지 않습니다. 다음 항목으로 이동해 진행하세요.</p></article>'}
+    ${renderEventStatus()}
     <article class="card shortcut-card"><h2>진행 단축키</h2><div class="shortcut-list"><span><kbd>Space</kbd>타이머</span><span><kbd>A</kbd>정답 공개/숨김</span><span><kbd>←</kbd><kbd>→</kbd>항목 이동</span><span><kbd>R</kbd>타이머 초기화</span></div></article>
     </aside></div>`;
 }
@@ -901,8 +903,25 @@ function renderRunSettings() {
   return `<article class="card"><h2>진행 안전·시간 설정</h2><form id="run-settings-form" class="form-grid settings-form"><label class="filter-checkbox wide"><input id="run-safety" type="checkbox" ${settings.safetyLock ? 'checked' : ''}>진행 안전 잠금 (실행 중 이동 경고)</label><div class="field wide"><label for="run-date">행사 날짜</label><input id="run-date" type="date" value="${esc(settings.eventDate)}" required></div><div class="field"><label for="run-start">예정 시작</label><input id="run-start" type="time" value="${settings.startTime}" required></div><div class="field"><label for="run-end">예정 종료</label><input id="run-end" type="time" value="${settings.endTime}" required></div><button class="btn wide" type="submit">진행 설정 저장</button></form><p class="sub">종료 시각이 시작 이전이면 다음 날로 계산합니다. 긴급 화면은 안전 잠금과 관계없이 즉시 타이머를 멈춥니다.</p></article>`;
 }
 
-function renderScreenContent(screen, preview = false) {
+function renderSlideSelector() {
+  const active = publicScreen(currentScreen()).template;
+  return `<article class="card mode-card"><div class="section-head"><div><p class="eyebrow">PPT 대신 송출</p><h2>슬라이드 선택</h2></div></div><div class="mode-grid">${Object.entries(legacyScreenIds).map(([mode,id]) => `<button class="mode-button ${state.displayMode === 'screen' && active === mode ? 'active' : ''}" data-immediate-screen="${id}" aria-pressed="${state.displayMode === 'screen' && active === mode}"><span class="mode-dot"></span>${esc(screenModeMeta[mode].shortLabel)}</button>`).join('')}<button class="mode-button" data-action="runtime-return" ${state.runtime.returns.length ? '' : 'disabled'}><span class="mode-dot"></span>직전 화면 복귀</button></div><p class="sub mode-help">대기·오프닝·안내·휴식·마침을 바로 송출하고, 진행하던 화면으로 복귀할 수 있습니다.</p></article>`;
+}
+
+function screenTheme(screen, preview = false) {
+  const defaults = { lobby: 'blue', opening: 'gold', rules: 'blue', break: 'green', ending: 'gold' };
+  return screen.template && screen.style === defaults[screen.template] ? `${preview ? 'preview' : 'screen'}-${screen.template}` : `slide-${screen.style}`;
+}
+
+function renderScreenContent(screen, preview = false, event = state?.event || {}, messages = state?.messages || {}) {
   const safe = publicScreen(screen);
+  if (safe.template) {
+    const rules = safe.template === 'rules';
+    const kicker = { lobby: 'SIGMA GOLDEN BELL', opening: "LET'S BEGIN", rules: 'HOW TO PLAY', break: 'BREAK TIME', ending: 'THANK YOU' }[safe.template];
+    const titleTag = preview ? 'strong' : 'h1';
+    const detail = safe.template === 'lobby' ? [event.date, event.place].filter(Boolean).join(' · ') : messages.tagline;
+    return `<section class="restored-screen ${preview ? `preview-scene preview-${safe.template} ${screenTheme(safe, true)}` : rules ? 'screen-rules-wrap' : 'screen-message'}">${!rules && preview ? '<div class="preview-watermark" aria-hidden="true">Σ</div>' : ''}<p>${esc(kicker)}</p><${titleTag}>${esc(safe.title)}</${titleTag}>${safe.subtitle ? `<h2>${esc(safe.subtitle)}</h2>` : ''}${rules ? `<ol>${safe.description.split(/\r?\n/).filter(Boolean).map(line => `<li>${esc(line)}</li>`).join('')}</ol>` : safe.description ? `<div class="slide-description ${safe.description.length > 500 ? 'long' : ''}">${multiline(safe.description)}</div>` : ''}${safe.emphasis ? `<div class="slide-emphasis">${esc(safe.emphasis)}</div>` : ''}${!rules && detail ? `<span>${esc(detail)}</span>` : ''}</section>`;
+  }
   return `<section class="${preview ? 'preview-scene' : 'screen-message'} custom-screen-content slide-${safe.style}"><h1>${esc(safe.title)}</h1>${safe.subtitle ? `<h2>${esc(safe.subtitle)}</h2>` : ''}${safe.description ? `<div class="slide-description ${safe.description.length > 500 ? 'long' : ''}">${multiline(safe.description)}</div>` : ''}${safe.emphasis ? `<strong class="slide-emphasis">${esc(safe.emphasis)}</strong>` : ''}</section>`;
 }
 
@@ -1304,7 +1323,8 @@ function renderScreen() {
   const event = publicState.event || {};
   const messages = publicState.messages || {};
   if (mode === 'screen') {
-    app.innerHTML = `<main class="screen-mode custom-slide slide-${esc(publicScreen(publicState.screen || {}).style)}"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title || '')}</div></header>${renderScreenContent(publicState.screen || {})}<footer class="screen-simple-footer"><span>${esc(messages.tagline || '')}</span><span>SIGMA</span></footer>${renderScreenTool()}</main>`;
+    const screen = publicScreen(publicState.screen || {});
+    app.innerHTML = `<main class="screen-mode ${screen.template ? screenTheme(screen) : `custom-slide slide-${screen.style}`}"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title || '')}</div>${screen.template ? `<div class="screen-status"><span></span>${esc(screenModeMeta[screen.template].label)}</div>` : ''}</header>${screen.template && screen.template !== 'rules' ? '<div class="screen-watermark" aria-hidden="true">Σ</div>' : ''}${renderScreenContent(screen, false, event, messages)}<footer class="screen-simple-footer"><span>${esc(messages.tagline || '')}</span><span>SIGMA</span></footer>${renderScreenTool()}</main>`;
     bindScreenEvents();
     return;
   }

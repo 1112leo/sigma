@@ -314,6 +314,7 @@ button:disabled { cursor: not-allowed; }
 .operator-answer small { display: block; margin-top: 9px; color: var(--muted); font-size: 11px; }
 
 .control-rail { position: sticky; top: 14px; }
+.control-rail > .timer-card { order: -1; }
 .timer-card { padding: 18px 20px; }
 .timer-status { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 11px; font-weight: 850; }
 .timer { margin: 7px 0 4px; color: white; font-size: clamp(62px, 6vw, 90px); font-weight: 950; line-height: 1; letter-spacing: -.075em; font-variant-numeric: tabular-nums; }
@@ -451,6 +452,17 @@ kbd { min-width: 23px; padding: 3px 6px; border: 1px solid #536985; border-botto
 .screen-opening { background: radial-gradient(circle at 18% 0, rgba(78, 124, 242, .78), transparent 47%), radial-gradient(circle at 85% 100%, rgba(255, 211, 79, .15), transparent 38%), #071326; }
 .screen-break { background: radial-gradient(circle at 50% 0, rgba(69, 211, 155, .24), transparent 48%), #06171f; }
 .screen-ending { background: radial-gradient(circle at 50% -5%, rgba(255, 211, 79, .25), transparent 48%), #12111c; }
+
+/* Built-in visual templates retain editable Stage 3 copy and palette choices. */
+.restored-screen > h2 { margin: 2vh 0; max-width: 85%; font-size: clamp(22px, 2.4vw, 45px); color: #ced9e8; }
+.restored-screen .slide-description { max-width: 85%; white-space: normal; }
+.preview-scene.restored-screen > h2 { margin: 2% 0; font-size: clamp(10px, 1.4vw, 22px); }
+.preview-scene.restored-screen .slide-description { font-size: clamp(9px, 1.1vw, 18px); }
+.preview-scene.restored-screen .slide-emphasis { font-size: clamp(10px, 1.3vw, 22px); }
+.screen-mode.slide-gold, .preview-scene.restored-screen.slide-gold { background: radial-gradient(circle at 50% 0, #473c23, #11111d 70%); }
+.screen-mode.slide-green, .preview-scene.restored-screen.slide-green { background: radial-gradient(circle at 50% 0, #1a453e, #071720 70%); }
+.screen-mode.slide-blue, .preview-scene.restored-screen.slide-blue { background: radial-gradient(circle at 50% 0, #18345d, #07101f 70%); }
+.screen-mode.slide-plain, .preview-scene.restored-screen.slide-plain { background: #0b1627; }
 
 .screen-rules-wrap { position: relative; z-index: 2; flex: 1; display: flex; flex-direction: column; justify-content: center; width: min(86vw, 1500px); margin: auto; }
 .screen-rules-wrap > p { margin: 0 0 1.2vh; color: var(--gold); font-size: clamp(15px, 1.2vw, 24px); font-weight: 950; letter-spacing: .22em; }
