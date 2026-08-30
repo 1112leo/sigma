@@ -1,0 +1,48 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const { webcrypto } = require('node:crypto');
+
+const storage = new Map();
+const app = { innerHTML: '' };
+const fields = Object.fromEntries([
+  'event-title', 'event-date', 'event-place', 'message-tagline',
+  'message-lobby', 'message-opening', 'message-rules', 'message-break', 'message-ending',
+].map(id => [id, { value: '' }]));
+const context = vm.createContext({
+  assert, crypto: webcrypto, URLSearchParams,
+  location: { search: '', hash: '' }, window: { addEventListener() {} },
+  localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) },
+  sessionStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) },
+  document: {
+    addEventListener() {}, getElementById: id => id === 'app' ? app : fields[id],
+    querySelector: () => null, querySelectorAll: () => [],
+  },
+});
+const source = fs.readFileSync(`${__dirname}/app.js`, 'utf8');
+vm.runInContext(source.slice(0, source.lastIndexOf('\nif (IS_SCREEN) {')) + `
+  render = () => {};
+  toast = () => {};
+  state = defaultState();
+  saveSettings();
+  state = loadPrivateState();
+  assert.equal(state.event.title, '');
+  for (const value of Object.values(state.messages)) assert.equal(value, '');
+  const restored = normalizeState(JSON.parse(JSON.stringify(state)));
+  assert.deepEqual(restored.messages, state.messages);
+  assert.equal(normalizeState({}).messages.tagline, defaultState().messages.tagline);
+  for (const mode of ['lobby', 'opening', 'break', 'ending']) {
+    state.displayMode = mode;
+    publicState = buildPublicState();
+    assert.equal(publicState.messages[mode], '');
+    assert.equal(publicState.messages.tagline, '');
+    assert.ok(!renderPreview().includes(defaultState().messages[mode]));
+    renderScreen();
+    assert.ok(!document.getElementById('app').innerHTML.includes('잠시 후 시작합니다'));
+  }
+  state.displayMode = 'question';
+  publicState = buildPublicState();
+  renderScreen();
+  assert.ok(!document.getElementById('app').innerHTML.includes('SIGMA GOLDEN BELL'));
+`, context);
+console.log('PASS: empty settings save, reload, JSON restore, preview and projector; missing fields retain defaults');

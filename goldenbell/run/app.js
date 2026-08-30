@@ -99,6 +99,11 @@ function safeText(value, maxLength = 5000) {
   return typeof value === 'string' ? value.slice(0, maxLength) : '';
 }
 
+// Defaults apply only to missing fields, never to an intentionally empty value.
+function settingText(value, maxLength, fallback = '') {
+  return typeof value === 'string' ? safeText(value, maxLength).trim() : fallback;
+}
+
 function projectionText(value, maxLength) {
   const text = safeText(value, 5000);
   return text.length > maxLength ? `${text.slice(0, Math.max(0, maxLength - 1))}…` : text;
@@ -172,17 +177,17 @@ function normalizeState(candidate) {
   }
   return {
     event: {
-      title: safeText(rawEvent.title, 100).trim() || base.event.title,
+      title: settingText(rawEvent.title, 100, base.event.title),
       date: safeText(rawEvent.date, 100).trim(),
       place: safeText(rawEvent.place, 100).trim(),
     },
     messages: {
-      lobby: safeText(rawMessages.lobby, 100).trim() || base.messages.lobby,
-      opening: safeText(rawMessages.opening, 100).trim() || base.messages.opening,
-      tagline: safeText(rawMessages.tagline, 100).trim() || base.messages.tagline,
-      rules: safeText(rawMessages.rules, 2000).trim() || base.messages.rules,
-      break: safeText(rawMessages.break, 100).trim() || base.messages.break,
-      ending: safeText(rawMessages.ending, 100).trim() || base.messages.ending,
+      lobby: settingText(rawMessages.lobby, 100, base.messages.lobby),
+      opening: settingText(rawMessages.opening, 100, base.messages.opening),
+      tagline: settingText(rawMessages.tagline, 100, base.messages.tagline),
+      rules: settingText(rawMessages.rules, 2000, base.messages.rules),
+      break: settingText(rawMessages.break, 100, base.messages.break),
+      ending: settingText(rawMessages.ending, 100, base.messages.ending),
     },
     questions,
     currentIndex,
@@ -592,7 +597,7 @@ function renderPreview() {
     return `<div class="preview-scene preview-rules"><p>HOW TO PLAY</p><strong>진행 안내</strong><ol>${rules.map(rule => `<li>${esc(rule)}</li>`).join('')}</ol></div>`;
   }
   if (mode !== 'question') {
-    const copy = state.messages[mode] || state.messages.lobby;
+    const copy = state.messages[mode] ?? state.messages.lobby;
     const kicker = mode === 'lobby' ? 'SIGMA GOLDEN BELL' : mode === 'opening' ? 'LET\'S BEGIN' : mode === 'break' ? 'BREAK TIME' : 'THANK YOU';
     return `<div class="preview-scene preview-${mode}"><div class="preview-watermark" aria-hidden="true">Σ</div><p>${esc(kicker)}</p><strong>${esc(copy)}</strong><span>${esc(state.messages.tagline)}</span></div>`;
   }
@@ -680,14 +685,14 @@ function renderScreen() {
   const messages = publicState.messages || {};
   if (mode === 'rules') {
     const rules = safeText(messages.rules, 1200).split(/\r?\n/).filter(Boolean).slice(0, 6).map(rule => safeText(rule, 180));
-    app.innerHTML = `<main class="screen-mode screen-rules"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title || '시그마 수학 골든벨')}</div><div class="screen-status"><span></span>진행 안내</div></header><section class="screen-rules-wrap"><p>HOW TO PLAY</p><h1>진행 안내</h1><ol>${rules.map(rule => `<li>${esc(rule)}</li>`).join('')}</ol></section><footer class="screen-simple-footer"><span>${esc(messages.tagline || '')}</span><span>SIGMA</span></footer>${renderScreenTool()}</main>`;
+    app.innerHTML = `<main class="screen-mode screen-rules"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title ?? '시그마 수학 골든벨')}</div><div class="screen-status"><span></span>진행 안내</div></header><section class="screen-rules-wrap"><p>HOW TO PLAY</p><h1>진행 안내</h1><ol>${rules.map(rule => `<li>${esc(rule)}</li>`).join('')}</ol></section><footer class="screen-simple-footer"><span>${esc(messages.tagline || '')}</span><span>SIGMA</span></footer>${renderScreenTool()}</main>`;
     bindScreenEvents();
     return;
   }
   if (mode !== 'question') {
-    const title = messages[mode] || messages.lobby || '잠시 후 시작합니다';
+    const title = messages[mode] ?? messages.lobby ?? '잠시 후 시작합니다';
     const kicker = mode === 'lobby' ? 'SIGMA GOLDEN BELL' : mode === 'opening' ? 'LET\'S BEGIN' : mode === 'break' ? 'BREAK TIME' : 'THANK YOU';
-    app.innerHTML = `<main class="screen-mode screen-${mode}"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title || '시그마 수학 골든벨')}</div><div class="screen-status"><span></span>${esc(screenModeMeta[mode].label)}</div></header><div class="screen-watermark" aria-hidden="true">Σ</div><section class="screen-message"><p>${esc(kicker)}</p><h1>${esc(title)}</h1><span>${mode === 'lobby' ? `${esc(event.date || '')}${event.date && event.place ? ' · ' : ''}${esc(event.place || '')}` : esc(messages.tagline || '')}</span></section><footer class="screen-simple-footer"><span>${esc(messages.tagline || '')}</span><span>SIGMA</span></footer>${renderScreenTool()}</main>`;
+    app.innerHTML = `<main class="screen-mode screen-${mode}"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title ?? '시그마 수학 골든벨')}</div><div class="screen-status"><span></span>${esc(screenModeMeta[mode].label)}</div></header><div class="screen-watermark" aria-hidden="true">Σ</div><section class="screen-message"><p>${esc(kicker)}</p><h1>${esc(title)}</h1><span>${mode === 'lobby' ? `${esc(event.date || '')}${event.date && event.place ? ' · ' : ''}${esc(event.place || '')}` : esc(messages.tagline || '')}</span></section><footer class="screen-simple-footer"><span>${esc(messages.tagline || '')}</span><span>SIGMA</span></footer>${renderScreenTool()}</main>`;
     bindScreenEvents();
     return;
   }
@@ -700,7 +705,7 @@ function renderScreen() {
   const category = categoryMeta[question.category] || categoryMeta.basic;
   const remaining = getTimerRemaining(publicState.timer);
   const image = safeImage(question.image);
-  app.innerHTML = `<main class="screen-mode screen-question-mode ${publicState.answerVisible ? 'answer-open' : ''}"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title || '시그마 수학 골든벨')}</div><div class="screen-round"><span class="screen-category ${category.className}">${esc(category.label)}</span><strong>${Number(publicState.currentIndex) + 1}</strong><span>/ ${Number(publicState.totalQuestions) || 0}</span></div></header><section class="screen-question-wrap"><p class="screen-q-title">${esc(question.title || `문제 ${Number(publicState.currentIndex) + 1}`)}</p><div class="screen-question-content ${image ? 'has-image' : ''}">${image ? `<img class="screen-question-image" src="${image}" alt="${esc(question.imageAlt || '문제 참고 이미지')}">` : ''}<h1 class="screen-question ${questionSizeClass(question.question)}">${multiline(question.question || '문제를 준비 중입니다.')}</h1></div>${publicState.answerVisible ? `<div class="screen-answer"><span>정답</span><strong class="${answerSizeClass(question.answer)}">${multiline(question.answer || '정답 미입력')}</strong>${question.explanation ? `<p>${multiline(question.explanation)}</p>` : ''}</div>` : ''}</section><footer class="screen-footer"><div class="screen-timer-copy"><span data-timer-label>${remaining <= 0 ? '시간 종료' : '남은 시간'}</span><strong data-timer-value class="${timerClass(publicState.timer)}">${formatTime(remaining)}</strong></div><div class="screen-motto">${esc(messages.tagline || 'SIGMA GOLDEN BELL')}</div></footer><div class="screen-progress"><div data-timer-progress></div></div>${renderScreenTool()}</main>`;
+  app.innerHTML = `<main class="screen-mode screen-question-mode ${publicState.answerVisible ? 'answer-open' : ''}"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title ?? '시그마 수학 골든벨')}</div><div class="screen-round"><span class="screen-category ${category.className}">${esc(category.label)}</span><strong>${Number(publicState.currentIndex) + 1}</strong><span>/ ${Number(publicState.totalQuestions) || 0}</span></div></header><section class="screen-question-wrap"><p class="screen-q-title">${esc(question.title || `문제 ${Number(publicState.currentIndex) + 1}`)}</p><div class="screen-question-content ${image ? 'has-image' : ''}">${image ? `<img class="screen-question-image" src="${image}" alt="${esc(question.imageAlt || '문제 참고 이미지')}">` : ''}<h1 class="screen-question ${questionSizeClass(question.question)}">${multiline(question.question || '문제를 준비 중입니다.')}</h1></div>${publicState.answerVisible ? `<div class="screen-answer"><span>정답</span><strong class="${answerSizeClass(question.answer)}">${multiline(question.answer || '정답 미입력')}</strong>${question.explanation ? `<p>${multiline(question.explanation)}</p>` : ''}</div>` : ''}</section><footer class="screen-footer"><div class="screen-timer-copy"><span data-timer-label>${remaining <= 0 ? '시간 종료' : '남은 시간'}</span><strong data-timer-value class="${timerClass(publicState.timer)}">${formatTime(remaining)}</strong></div><div class="screen-motto">${esc(messages.tagline ?? 'SIGMA GOLDEN BELL')}</div></footer><div class="screen-progress"><div data-timer-progress></div></div>${renderScreenTool()}</main>`;
   bindScreenEvents();
   refreshTimerDom();
 }
@@ -998,15 +1003,15 @@ function saveSettings() {
   const rulesText = document.getElementById('message-rules').value.trim();
   const previousEvent = { ...state.event };
   const previousMessages = { ...state.messages };
-  state.event.title = safeText(document.getElementById('event-title').value.trim(), 100) || state.event.title;
+  state.event.title = safeText(document.getElementById('event-title').value.trim(), 100);
   state.event.date = safeText(document.getElementById('event-date').value.trim(), 100);
   state.event.place = safeText(document.getElementById('event-place').value.trim(), 100);
-  state.messages.tagline = safeText(document.getElementById('message-tagline').value.trim(), 100) || defaultState().messages.tagline;
-  state.messages.lobby = safeText(document.getElementById('message-lobby').value.trim(), 100) || defaultState().messages.lobby;
-  state.messages.opening = safeText(document.getElementById('message-opening').value.trim(), 100) || defaultState().messages.opening;
-  state.messages.rules = safeText(rulesText, 2000) || defaultState().messages.rules;
-  state.messages.break = safeText(document.getElementById('message-break').value.trim(), 100) || defaultState().messages.break;
-  state.messages.ending = safeText(document.getElementById('message-ending').value.trim(), 100) || defaultState().messages.ending;
+  state.messages.tagline = safeText(document.getElementById('message-tagline').value.trim(), 100);
+  state.messages.lobby = safeText(document.getElementById('message-lobby').value.trim(), 100);
+  state.messages.opening = safeText(document.getElementById('message-opening').value.trim(), 100);
+  state.messages.rules = safeText(rulesText, 2000);
+  state.messages.break = safeText(document.getElementById('message-break').value.trim(), 100);
+  state.messages.ending = safeText(document.getElementById('message-ending').value.trim(), 100);
   if (!saveState()) {
     state.event = previousEvent;
     state.messages = previousMessages;
