@@ -559,3 +559,24 @@ kbd { min-width: 23px; padding: 3px 6px; border: 1px solid #536985; border-botto
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+/* Locally rendered math, imports and preflight reports. */
+.math-warning { display:inline-block; font:600 11px/1.4 system-ui; color:#b42318; background:#fff2d5; border-radius:4px; padding:2px 5px; margin-left:6px; vertical-align:middle; }
+.katex-display { margin:.4em 0; overflow-x:auto; overflow-y:hidden; padding:.2em 0; max-width:100%; }
+.katex { font-size:1.04em; }
+.math-editor-preview { padding:18px; border:1px solid var(--line); border-radius:12px; background:var(--panel); overflow-wrap:anywhere; }
+.math-editor-preview h3 { margin-top:0; }
+.math-editor-preview p { line-height:1.6; }
+.preparation-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:20px; align-items:start; }
+.preparation-grid > * { min-width:0; }
+.preflight-stats { display:flex; flex-wrap:wrap; gap:12px; margin:18px 0; font-weight:700; }
+.validation-list { max-height:400px; overflow:auto; padding-left:24px; line-height:1.65; overflow-wrap:anywhere; }
+.validation-list .error { color:var(--red); }
+.validation-list .warning { color:var(--gold); }
+.startup-checks { display:grid; gap:16px; margin:22px 0; }
+.startup-checks label { display:flex; align-items:center; gap:10px; }
+.startup-checks input { width:20px; height:20px; }
+.import-preview { border-top:1px solid var(--line); margin-top:24px; padding-top:20px; }
+.import-rows { max-height:400px; overflow:auto; margin:14px 0; }
+.import-rows article { padding:14px 0; border-bottom:1px solid var(--line); overflow-wrap:anywhere; }
+.import-rows small { display:block; margin-bottom:8px; color:var(--muted); }
+@media (max-width:1050px) { .preparation-grid { grid-template-columns:1fr; } }

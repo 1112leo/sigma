@@ -1,10 +1,11 @@
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const output = join(root, 'dist', 'server', 'index.js');
-const files = ['index.html', 'app.js', 'runtime.js', 'styles.css', 'favicon.svg', 'og.png'];
+const fonts = (await readdir(join(root, 'vendor/katex/fonts'))).map(file => `vendor/katex/fonts/${file}`);
+const files = ['index.html', 'app.js', 'runtime.js', 'math.js', 'preparation.js', 'styles.css', 'favicon.svg', 'og.png', 'vendor/katex/katex.min.js', 'vendor/katex/katex.min.css', 'vendor/katex/LICENSE', ...fonts];
 const contentTypes = {
   'index.html': 'text/html; charset=utf-8',
   'app.js': 'text/javascript; charset=utf-8',
@@ -12,11 +13,13 @@ const contentTypes = {
   'styles.css': 'text/css; charset=utf-8',
   'favicon.svg': 'image/svg+xml',
   'og.png': 'image/png',
+  'vendor/katex/LICENSE': 'text/plain; charset=utf-8',
 };
 
 const assets = {};
 for (const file of files) {
   assets[file] = (await readFile(join(root, file))).toString('base64');
+  contentTypes[file] ||= { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf' }[extname(file)];
 }
 
 const worker = `const assets = ${JSON.stringify(assets)};

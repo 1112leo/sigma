@@ -21,7 +21,9 @@ module.exports = function createHarness() {
     clearInterval() {}, setInterval() {}, requestAnimationFrame() {},
   });
   vm.runInContext(fs.readFileSync(`${__dirname}/runtime.js`, 'utf8').replace(/^export \{.*\};$/m, ''), context);
-  const source = fs.readFileSync(`${__dirname}/app.js`, 'utf8').replace(/^import .*;$/m, '');
+  vm.runInContext(fs.readFileSync(`${__dirname}/vendor/katex/katex.min.js`, 'utf8'), context);
+  for (const module of ['math', 'preparation']) vm.runInContext(fs.readFileSync(`${__dirname}/${module}.js`, 'utf8').replace(/^export \{.*\};$/m, ''), context);
+  const source = fs.readFileSync(`${__dirname}/app.js`, 'utf8').replace(/^import .*;$/gm, '');
   vm.runInContext(source.slice(0, source.lastIndexOf('\nif (IS_SCREEN) {')), context);
   vm.runInContext('render = () => {}; toast = () => {}; state = defaultState();', context);
   const run = code => vm.runInContext(code, context);

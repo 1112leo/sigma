@@ -1,4 +1,6 @@
 import { defaultRuntime, validClockTime, validEventDate, normalizeRuntime, effectiveSequence, runtimePosition, activeItem, runtimeLog, roundProgress, eventClock } from './runtime.js?v=20260831-runtime4';
+import { renderMath, richText, mathProjection } from './math.js?v=20260831-preparation5';
+import { parseQuestionImport, prepareQuestionImport, checkPreparation } from './preparation.js?v=20260831-preparation5';
 
 const PRIVATE_STORAGE_KEY = 'sigma-goldenbell-v1';
 const PUBLIC_STORAGE_KEY = 'sigma-goldenbell-public-v2';
@@ -21,7 +23,7 @@ const MAX_IMAGE_FILE_BYTES = 12 * 1024 * 1024;
 const MAX_IMAGE_DATA_LENGTH = 900 * 1024;
 const MAX_TOTAL_IMAGE_DATA_LENGTH = 3 * 1024 * 1024;
 const SCREEN_MODES = new Set(['lobby', 'opening', 'rules', 'question', 'break', 'ending', 'screen']);
-const TABS = new Set(['live', 'questions', 'sequence', 'settings']);
+const TABS = new Set(['live', 'questions', 'sequence', 'settings', 'preparation']);
 const screenStyles = { blue: '블루', gold: '골드', green: '그린', plain: '기본' };
 const technicalScreen = { title: '기술 문제 발생', subtitle: '', description: '잠시만 기다려주세요. 곧 진행을 재개합니다.', emphasis: '', style: 'plain' };
 const legacyScreenIds = { lobby: 'waiting', opening: 'opening', rules: 'rules', break: 'standby', ending: 'end' };
@@ -62,6 +64,12 @@ let timerSaveRetryAt = 0;
 let modal = null;
 let authMessage = '';
 let persistenceBlocked = false;
+let importDraft = null;
+let preflightResult = null;
+let preflightBusy = false;
+let backupReadToken = 0;
+let preparationEpoch = 0;
+const startupChecks = new Set();
 
 function createId() {
   if (crypto.randomUUID) return crypto.randomUUID();
@@ -223,7 +231,7 @@ function settingText(value, maxLength, fallback = '') {
 
 function projectionText(value, maxLength) {
   const text = safeText(value, 5000);
-  return text.length > maxLength ? `${text.slice(0, Math.max(0, maxLength - 1))}…` : text;
+  return mathProjection(text, maxLength);
 }
 
 function safeImage(value) {
@@ -619,7 +627,7 @@ function refreshTimerDom() {
         const saved = update(next => {
           next.timer = { remaining: 0, running: false, endAt: null };
           runtimeLog(next, 'timer-end', `${activeItem(next)?.questionId || ''} 시간 종료`);
-        }, { render: state.tab === 'live' && !modal });
+        }, { render: state.tab === 'live' && !modal && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) });
         timerSaveRetryAt = saved ? 0 : Date.now() + 5000;
       }
     } finally { completingTimer = false; }
@@ -784,7 +792,7 @@ function render() {
         <div class="top-actions"><span class="live-chip"><span></span>${esc(screenModeMeta[state.displayMode].label)}</span><button class="btn screen-launch" data-action="open-screen">프로젝터 열기</button><button class="btn ghost" data-action="lock">잠금</button></div>
       </header>
       <nav class="tabs" aria-label="주요 메뉴">
-        ${[['live', '실시간 진행'], ['questions', '문제 편집'], ['sequence', '행사 구성'], ['settings', '행사·슬라이드 설정']]
+        ${[['live', '실시간 진행'], ['questions', '문제 편집'], ['sequence', '행사 구성'], ['preparation', '행사 점검·가져오기'], ['settings', '행사·슬라이드 설정']]
           .map(([id, label]) => `<button class="tab ${state.tab === id ? 'active' : ''}" data-tab="${id}" aria-current="${state.tab === id ? 'page' : 'false'}">${label}</button>`).join('')}
       </nav>
       <main class="workspace">${persistenceBlocked ? '<p class="overflow-notice" role="alert">저장 데이터를 읽을 수 없거나 더 최신 버전입니다. 원본은 보존되어 있으며 변경은 저장되지 않습니다. 설정에서 JSON 백업 후 호환되는 파일을 불러와주세요.</p>' : ''}${renderTab()}</main>
@@ -801,6 +809,7 @@ function renderTab() {
   if (state.tab === 'questions') return renderQuestions();
   if (state.tab === 'sequence') return renderSequence();
   if (state.tab === 'settings') return renderSettings();
+  if (state.tab === 'preparation') return renderPreparation();
   return renderLive();
 }
 
@@ -823,8 +832,8 @@ function renderPreview() {
   return `
     <div class="preview-question-scene ${state.answerVisible ? 'show-answer' : ''}">
       <div class="preview-topline"><span>${esc(meta.label)}</span><span>${questionProgress().current} / ${questionProgress().total}</span></div>
-      <div class="preview-question-content ${image ? 'has-image' : ''}">${image ? `<img class="preview-question-image" src="${image}" alt="${esc(question.imageAlt || '문제 참고 이미지')}">` : ''}<div class="preview-question ${questionSizeClass(projectionText(question.question, 600))}">${multiline(projectionText(question.question, 600) || '문제를 준비 중입니다.')}</div></div>
-      ${state.answerVisible ? `<div class="preview-answer"><small>정답</small><strong class="${answerSizeClass(projectionText(question.answer, 200))}">${multiline(projectionText(question.answer, 200) || '정답 미입력')}</strong>${question.explanation ? `<span>${multiline(projectionText(question.explanation, 400))}</span>` : ''}</div>` : ''}
+      <div class="preview-question-content ${image ? 'has-image' : ''}">${image ? `<img class="preview-question-image" src="${image}" alt="${esc(question.imageAlt || '문제 참고 이미지')}">` : ''}<div class="preview-question ${questionSizeClass(projectionText(question.question, 600))}">${richText(projectionText(question.question, 600) || '문제를 준비 중입니다.')}</div></div>
+      ${state.answerVisible ? `<div class="preview-answer"><small>정답</small><strong class="${answerSizeClass(projectionText(question.answer, 200))}">${richText(projectionText(question.answer, 200) || '정답 미입력')}</strong>${question.explanation ? `<span>${richText(projectionText(question.explanation, 400))}</span>` : ''}</div>` : ''}
       <div class="preview-bottomline"><span>${esc(question.title)}</span><strong data-timer-value class="${timerClass(state.timer)}">${formatTime(getTimerRemaining(state.timer))}</strong></div>
     </div>`;
 }
@@ -855,7 +864,7 @@ function renderLive() {
     ${question ? `<div class="primary-controls"><button class="btn timer-toggle" data-action="timer-toggle"><span>${state.timer.running ? '타이머 일시정지' : '타이머 시작'}</span><kbd>Space</kbd></button><button class="btn presentation-next" data-action="toggle-answer" ${question.answer ? '' : 'disabled'}><span>${state.answerVisible ? '정답 숨기기' : '정답 공개'}</span><kbd>A</kbd></button></div>` : ''}
     <div class="transport-controls sequence-transport"><button class="btn" data-action="prev" ${cursor <= 0 ? 'disabled' : ''}>← 이전 항목</button><button class="btn primary" data-action="next" ${cursor >= total - 1 ? 'disabled' : ''}>다음 항목 →</button></div>
     ${question ? '<div class="row"><button class="btn sm ghost" data-action="reset-timer">시간 초기화 (R)</button><button class="btn sm ghost" data-action="edit-current">현재 문제 수정</button></div>' : ''}</article>
-    ${question ? `<article class="card current-question-card"><div class="stage-line"><div class="row">${categoryBadge(question)}<span class="question-index">${esc(currentRoundLabel())}</span></div><span class="question-title">${esc(question.id)}</span></div>${question.image ? `<img class="operator-question-image" src="${safeImage(question.image)}" alt="${esc(question.imageAlt || '문제 참고 이미지')}">` : ''}<div class="operator-question ${questionSizeClass(question.question)}">${multiline(question.question || '아직 문제 내용이 입력되지 않았습니다.')}</div><div class="operator-answer visible"><span>진행자 전용 · 정답</span><strong>${multiline(question.answer || '미입력')}</strong>${question.explanation ? `<p>${multiline(question.explanation)}</p>` : ''}${question.acceptedAnswers ? `<p>인정 답안 · ${multiline(question.acceptedAnswers)}</p>` : ''}${question.judgeNote ? `<p>판정 메모 · ${multiline(question.judgeNote)}</p>` : ''}${question.note ? `<small>진행 메모 · ${multiline(question.note)}</small>` : ''}</div></article>` : ''}
+    ${question ? `<article class="card current-question-card"><div class="stage-line"><div class="row">${categoryBadge(question)}<span class="question-index">${esc(currentRoundLabel())}</span></div><span class="question-title">${esc(question.id)}</span></div>${question.image ? `<img class="operator-question-image" src="${safeImage(question.image)}" alt="${esc(question.imageAlt || '문제 참고 이미지')}">` : ''}<div class="operator-question ${questionSizeClass(question.question)}">${richText(question.question || '아직 문제 내용이 입력되지 않았습니다.')}</div><div class="operator-answer visible"><span>진행자 전용 · 정답</span><strong>${richText(question.answer || '미입력')}</strong>${question.explanation ? `<p>${richText(question.explanation)}</p>` : ''}${question.acceptedAnswers ? `<p>인정 답안 · ${multiline(question.acceptedAnswers)}</p>` : ''}${question.judgeNote ? `<p>판정 메모 · ${multiline(question.judgeNote)}</p>` : ''}${question.note ? `<small>진행 메모 · ${multiline(question.note)}</small>` : ''}</div></article>` : ''}
     ${renderRuntimeControls()}
     </section><aside class="stack control-rail">${renderEventStatus()}
     <article class="card overview-card"><p class="eyebrow">행사 진행</p><div class="section-head"><h2>${esc(currentRoundLabel())}</h2><strong>${position} / ${total}</strong></div><div class="progress"><div style="width:${progress}%"></div></div><p class="sub">현재 · ${esc(title)}</p><div class="next-item"><small>다음 항목</small><strong>${esc(sequenceItemLabel(liveSequence[cursor + 1]))}</strong></div></article>
@@ -1111,7 +1120,7 @@ function renderQuestions() {
       ${unfinal ? `<p class="overflow-notice">사용 문제 중 ${unfinal}개가 최종 확정 전입니다. 편집·저장은 계속할 수 있습니다.</p>` : ''}
       <div class="q-list">${visible.map((question, position) => {
         const index = state.questions.indexOf(question);
-        return `<article class="q-item usage-${question.usageStatus} ${index === state.currentIndex ? 'current' : ''}"><div class="q-no"><span>${String(index + 1).padStart(2, '0')}</span>${index === state.currentIndex ? '<small>현재</small>' : ''}</div><div class="q-copy"><strong>${esc(question.question || question.title || '미입력 문제')}</strong><span>${esc(question.id)} · ${esc(categoryMeta[question.category].label)} · ${esc(roundLabels[question.round] || '라운드 미지정')} · ${question.timeLimit}초</span><div class="row wrap"><span class="badge">${usageLabels[question.usageStatus]}</span><span class="badge">${difficultyLabels[question.difficulty]}</span><span class="badge ${question.reviewStatus === 'final' ? 'green' : ''}">${reviewLabels[question.reviewStatus]}</span><span>${esc(question.author || '출제자 미지정')}</span></div></div><div class="q-actions"><button class="btn sm" data-move-q="${esc(question.id)}" data-direction="-1" aria-label="${index + 1}번 문제 위로" ${position === 0 ? 'disabled' : ''}>↑</button><button class="btn sm" data-move-q="${esc(question.id)}" data-direction="1" aria-label="${index + 1}번 문제 아래로" ${position === visible.length - 1 ? 'disabled' : ''}>↓</button><button class="btn sm" data-edit-q="${esc(question.id)}">수정</button><button class="btn sm" data-go-q="${index}">송출</button><button class="btn sm danger-ghost" data-delete-q="${esc(question.id)}">삭제</button></div></article>`;
+        return `<article class="q-item usage-${question.usageStatus} ${index === state.currentIndex ? 'current' : ''}"><div class="q-no"><span>${String(index + 1).padStart(2, '0')}</span>${index === state.currentIndex ? '<small>현재</small>' : ''}</div><div class="q-copy"><strong>${richText(question.question || question.title || '미입력 문제')}</strong><span>${esc(question.id)} · ${esc(categoryMeta[question.category].label)} · ${esc(roundLabels[question.round] || '라운드 미지정')} · ${question.timeLimit}초</span><div class="row wrap"><span class="badge">${usageLabels[question.usageStatus]}</span><span class="badge">${difficultyLabels[question.difficulty]}</span><span class="badge ${question.reviewStatus === 'final' ? 'green' : ''}">${reviewLabels[question.reviewStatus]}</span><span>${esc(question.author || '출제자 미지정')}</span></div></div><div class="q-actions"><button class="btn sm" data-move-q="${esc(question.id)}" data-direction="-1" aria-label="${index + 1}번 문제 위로" ${position === 0 ? 'disabled' : ''}>↑</button><button class="btn sm" data-move-q="${esc(question.id)}" data-direction="1" aria-label="${index + 1}번 문제 아래로" ${position === visible.length - 1 ? 'disabled' : ''}>↓</button><button class="btn sm" data-edit-q="${esc(question.id)}">수정</button><button class="btn sm" data-go-q="${index}">송출</button><button class="btn sm danger-ghost" data-delete-q="${esc(question.id)}">삭제</button></div></article>`;
       }).join('') || '<div class="empty-state"><h3>조건에 맞는 문제가 없습니다</h3><p>필터를 초기화하거나 새 문제를 추가해주세요.</p></div>'}</div></section>
       <aside class="stack side-notes"><article class="card"><p class="eyebrow">전체 문제 기준</p><h2>검수 현황</h2><div class="review-stats"><div class="stat"><span>전체</span><strong>${state.questions.length}</strong></div>${Object.entries(reviewLabels).map(([key, label]) => `<div class="stat"><span>${label}</span><strong>${state.questions.filter(question => question.reviewStatus === key).length}</strong></div>`).join('')}</div></article><article class="card note-card"><strong>문제 유형과 라운드는 별개입니다</strong><p>예비 문제는 본 진행과 분리해 보관하세요. 위·아래 버튼은 현재 필터에 보이는 인접 문제와 위치를 바꾸며, ID는 유지됩니다.</p><p>인정답안·판정 메모·진행 메모·출제자·검수 상태는 프로젝터로 보내지 않습니다.</p></article></aside>
     </div>`;
@@ -1143,6 +1152,133 @@ function moveQuestion(id, direction) {
     next.questions.forEach((question, index) => { question.order = index + 1; });
     next.currentIndex = Math.max(0, next.questions.findIndex(question => question.id === currentId));
   });
+}
+
+function importOptions() {
+  return { enums: questionEnums, migrate: migrateQuestion, validTime: validTimeLimit, safeImage, maxImages: MAX_TOTAL_IMAGE_DATA_LENGTH };
+}
+function clearPreparationDrafts() {
+  preparationEpoch++;
+  importDraft = null;
+  preflightResult = null;
+  preflightBusy = false;
+  startupChecks.clear();
+  modal = null;
+}
+function preparationSignature() { return JSON.stringify([state.questions, state.sequence, state.customScreens, state.runSettings]); }
+function prepareBatch() {
+  importDraft.newIds ||= importDraft.rows.map(() => createId());
+  return prepareQuestionImport(importDraft.rows, state.questions, importDraft.mode, { ...importOptions(), newIds: importDraft.newIds });
+}
+function parseBatch() {
+  const text = document.getElementById('batch-text').value;
+  const format = document.getElementById('batch-format').value;
+  importDraft = { text, format, mode: importDraft?.mode || 'append' };
+  try { importDraft.rows = parseQuestionImport(text, format); }
+  catch (error) { importDraft.error = `파일 해석 오류: ${error.message}`; }
+  render();
+}
+async function readBatchFile(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) return alert('10MB 이하 파일만 가져올 수 있습니다.');
+  const draft = importDraft = { text: '', format: /\.csv$/i.test(file.name) ? 'csv' : 'json', mode: 'append', busy: true };
+  render();
+  try {
+    draft.text = await file.text();
+    draft.rows = parseQuestionImport(draft.text, draft.format);
+  } catch (error) { draft.error = `파일 해석 오류: ${error.message}`; }
+  finally { draft.busy = false; if (importDraft === draft && state) render(); }
+}
+async function brokenImages(questions) {
+  const failed = [], checked = new Map();
+  for (const q of questions) {
+    if (!q.image) continue;
+    if (!checked.has(q.image)) {
+      try { const image = await loadImage(q.image); checked.set(q.image, image.naturalWidth > 0 && image.naturalHeight > 0); }
+      catch { checked.set(q.image, false); }
+    }
+    if (!checked.get(q.image)) failed.push(q.id);
+  }
+  return failed;
+}
+function commitQuestionBatch(result, mode) {
+  if (result.errors.length || persistenceBlocked) return false;
+  backupReadToken++;
+  const applied = update(next => {
+    next.questions = result.questions;
+    if (mode === 'replace') {
+      next.runtime = defaultRuntime();
+      // Preserve the operator's slide construction; preflight exposes dangling IDs.
+      activateSequence(next, 0);
+    }
+    stopTimerIn(next);
+    next.answerVisible = false;
+    next.runtime.returns.forEach(position => { position.answerVisible = false; });
+    next.currentIndex = Math.max(0, next.questions.findIndex(q => q.id === activeItem(next)?.questionId));
+    const item = activeItem(next);
+    if (item?.type === 'question' && next.questions.some(q => q.id === item.questionId)) {
+      if (next.displayMode !== 'question') activateCurrentItem(next);
+      else next.displayMode = 'question';
+    } else next.displayMode = 'screen';
+    runtimeLog(next, 'question-import', `문제 ${mode} · ${result.prepared.length}개`);
+  });
+  if (applied) { clearPreparationDrafts(); render(); toast('문제를 적용했습니다. 행사 구성과 점검 결과를 확인해주세요.'); }
+  return applied;
+}
+async function applyBatch() {
+  const draft = importDraft;
+  if (!draft?.rows || draft.busy || !state || persistenceBlocked) return;
+  let result = prepareBatch();
+  if (result.errors.length) return;
+  draft.busy = true;
+  draft.error = '';
+  render();
+  try {
+    const failed = await brokenImages(result.prepared);
+    if (draft !== importDraft || !state || !isUnlocked()) return;
+    if (failed.length) throw new Error(`이미지를 읽을 수 없는 문제: ${failed.join(', ')}`);
+    result = prepareBatch(); // Merge against current data, not an old preview.
+    if (result.errors.length) return;
+    if (draft.mode === 'replace' && !confirm('전체 문제를 교체할까요? 타이머·정답 공개·임시 진행 기록은 초기화됩니다. 기존 행사 구성은 유지되어 누락 참조가 생길 수 있습니다. 적용 전 JSON 백업을 저장합니다.')) return;
+    if (draft.mode !== 'replace' && !mayNavigate()) return;
+    downloadBackup('before-question-import');
+    commitQuestionBatch(result, draft.mode);
+  } catch (error) { draft.error = error.message; }
+  finally { draft.busy = false; if (state) render(); }
+}
+async function runPreflight() {
+  if (preflightBusy || !state) return;
+  preflightBusy = true;
+  const epoch = preparationEpoch;
+  const signature = preparationSignature();
+  const snapshot = structuredClone(state);
+  const result = checkPreparation(snapshot, { validTime: validTimeLimit, safeImage, math: renderMath });
+  render();
+  try {
+    const broken = await brokenImages(snapshot.questions);
+    if (epoch !== preparationEpoch || !state) return;
+    for (const id of broken) if (!result.issues.some(issue => issue.code === 'image' && issue.id === id)) result.issues.push({ severity: 'error', code: 'image', id, label: `${id}: 이미지 파일을 디코딩할 수 없습니다.` });
+    const badIds = new Set(result.issues.filter(issue => issue.severity === 'error' && issue.id).map(issue => issue.id));
+    result.normal = snapshot.questions.filter(q => !badIds.has(q.id)).length;
+    preflightResult = { ...result, signature };
+  } finally { if (epoch === preparationEpoch) { preflightBusy = false; if (state) render(); } }
+}
+function renderQuestionMathPreview(question) {
+  return `${question.image ? `<img class="operator-question-image" src="${safeImage(question.image)}" alt="${esc(question.imageAlt || '문제 이미지')}">` : ''}<div>${richText(question.question || '문제 미입력')}</div><p><small>정답</small> ${richText(question.answer || '정답 미입력')}</p>${question.explanation ? `<p>${richText(question.explanation)}</p>` : ''}`;
+}
+function renderPreparation() {
+  const preview = importDraft?.rows ? prepareBatch() : null;
+  const result = preflightResult;
+  const stale = result && result.signature !== preparationSignature();
+  return `<div class="preparation-grid"><section class="stack"><article class="card"><div class="section-head"><div><p class="eyebrow">행사 준비</p><h2>행사 준비 점검</h2></div><button class="btn primary" data-action="preflight" ${preflightBusy ? 'disabled' : ''}>${preflightBusy ? '사진 확인 중…' : '자동 점검 실행'}</button></div><p class="sub">문제·수식·사진 파일·구성 참조를 검사합니다. 경고가 있어도 진행을 강제로 막지 않습니다.</p>
+    ${result ? `${stale ? '<p class="overflow-notice">점검 후 데이터가 변경되었습니다. 다시 점검해주세요.</p>' : ''}<div class="preflight-stats"><span>✓ 내용 정상 ${result.normal}개</span><span>✕ 오류 ${result.issues.filter(i => i.severity === 'error').length}건</span><span>⚠ 경고 ${result.issues.filter(i => i.severity === 'warning').length}건</span><span>예비문제 ${result.reserve}개</span></div><ul class="validation-list">${result.issues.map(issue => `<li class="${issue.severity}">${issue.severity === 'error' ? '✕' : '⚠'} ${esc(issue.label)}</li>`).join('') || '<li>자동 검사 항목을 모두 통과했습니다.</li>'}</ul>` : '<p class="empty-state">아직 점검하지 않았습니다.</p>'}</article>
+    <article class="card"><h2>시작 전 직접 확인</h2><p class="sub">하드웨어 자동 감지가 아닙니다. 실제 프로젝터와 진행 노트북에서 확인하세요. 체크 상태는 이 탭을 닫으면 초기화됩니다.</p><div class="startup-checks">${[['projector', '프로젝터 연결·전체 화면·가독성'], ['data', '문제 데이터·사진·수식·JSON 백업'], ['sequence', '행사 순서·패자부활·최종 라운드'], ['timer', '타이머 시작·종료·복귀 동작'], ['settings', '행사 날짜·시간·부제·안전 잠금']].map(([id, label]) => `<label><input type="checkbox" data-startup-check="${id}" ${startupChecks.has(id) ? 'checked' : ''}>${label}</label>`).join('')}</div><p class="field-help">오프라인 현장 진행은 이 프로젝트의 로컬 서버 실행을 권장합니다. KaTeX와 폰트는 프로젝트 내부 파일이며 CDN을 사용하지 않습니다.</p></article></section>
+    <section class="card"><p class="eyebrow">문제 제작</p><h2>문제 일괄 가져오기</h2><p class="sub">문제만 추가·업데이트·교체합니다. 전체 백업 복원은 행사·슬라이드 설정에서 사용하세요. JSON 배열 또는 { questions: [...] }, CSV를 지원합니다.</p>
+    <form id="batch-form" class="form-grid one-column"><div class="field"><label for="batch-file">JSON / CSV 파일</label><input id="batch-file" type="file" accept=".json,.csv,application/json,text/csv" ${importDraft?.busy ? 'disabled' : ''}></div><div class="field"><label for="batch-format">붙여넣기 형식</label><select id="batch-format" ${importDraft?.busy ? 'disabled' : ''}>${selectOptions({ json: 'JSON', csv: 'CSV' }, importDraft?.format || 'json')}</select></div><div class="field"><label for="batch-text">문제 데이터 붙여넣기</label><textarea id="batch-text" rows="6" ${importDraft?.busy ? 'disabled' : ''}>${esc(importDraft?.text || '')}</textarea></div><button type="submit" class="btn" ${importDraft?.busy ? 'disabled' : ''}>파싱·미리보기</button></form>
+    <p class="field-help">CSV 헤더: id,category,round,question,answer,explanation,acceptedAnswers,judgeNote,author,difficulty,timeLimit,usageStatus,reviewStatus<br>생략된 선택 필드는 새 문제의 기본값을 사용합니다. ID 업데이트는 생략된 기존 필드를 유지합니다. 빈 round는 미지정입니다.</p>
+    ${importDraft?.error ? `<p class="overflow-notice" role="alert">${esc(importDraft.error)}</p>` : ''}
+    ${preview ? `<div class="import-preview"><h3>적용 전 미리보기 · ${importDraft.rows.length}개</h3><div class="field"><label for="batch-mode">가져오기 방식</label><select id="batch-mode" ${importDraft.busy ? 'disabled' : ''}>${selectOptions({ append: '기존 문제에 추가', update: 'ID가 같으면 업데이트', replace: '전체 문제 교체' }, importDraft.mode)}</select></div><p class="sub">적용 후 전체 ${preview.questions.length}개. 전체 교체 시 원본 행사 구성은 유지하고 임시 진행은 초기화합니다. 구성의 누락 참조는 자동 점검에서 확인하세요.</p><ul class="validation-list">${preview.errors.map(error => `<li class="error">${error.row ? `문제 ${error.row}` : '전체'} · ${esc(error.message)}</li>`).join('')}</ul><div class="import-rows">${preview.prepared.map(q => `<article><small>${esc(q.id)} · ${esc(q.category)} · ${esc(q.round || '미지정')}</small><div>${richText(q.question || '문제 없음')}</div><p>정답: ${richText(q.answer || '정답 없음')}</p></article>`).join('')}</div><button class="btn primary" data-action="batch-apply" ${preview.errors.length || importDraft.busy || persistenceBlocked ? 'disabled' : ''}>${importDraft.busy ? '확인 중…' : '검증한 문제 적용'}</button></div>` : ''}</section></div>`;
 }
 
 function renderSettings() {
@@ -1194,7 +1330,7 @@ function renderScreen() {
   const category = categoryMeta[question.category] || categoryMeta.basic;
   const remaining = getTimerRemaining(publicState.timer);
   const image = safeImage(question.image);
-  app.innerHTML = `<main class="screen-mode screen-question-mode ${publicState.answerVisible ? 'answer-open' : ''}"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title ?? '시그마 수학 골든벨')}</div><div class="screen-round"><span class="screen-category ${category.className}">${esc(category.label)}</span><strong>${Number(publicState.currentIndex) + 1}</strong><span>/ ${Number(publicState.totalQuestions) || 0}</span></div></header><section class="screen-question-wrap"><p class="screen-q-title">${esc(question.title || `문제 ${Number(publicState.currentIndex) + 1}`)}</p><div class="screen-question-content ${image ? 'has-image' : ''}">${image ? `<img class="screen-question-image" src="${image}" alt="${esc(question.imageAlt || '문제 참고 이미지')}">` : ''}<h1 class="screen-question ${questionSizeClass(question.question)}">${multiline(question.question || '문제를 준비 중입니다.')}</h1></div>${publicState.answerVisible ? `<div class="screen-answer"><span>정답</span><strong class="${answerSizeClass(question.answer)}">${multiline(question.answer || '정답 미입력')}</strong>${question.explanation ? `<p>${multiline(question.explanation)}</p>` : ''}</div>` : ''}</section><footer class="screen-footer"><div class="screen-timer-copy"><span data-timer-label>${remaining <= 0 ? '시간 종료' : '남은 시간'}</span><strong data-timer-value class="${timerClass(publicState.timer)}">${formatTime(remaining)}</strong></div><div class="screen-motto">${esc(messages.tagline ?? 'SIGMA GOLDEN BELL')}</div></footer><div class="screen-progress"><div data-timer-progress></div></div>${renderScreenTool()}</main>`;
+  app.innerHTML = `<main class="screen-mode screen-question-mode ${publicState.answerVisible ? 'answer-open' : ''}"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title ?? '시그마 수학 골든벨')}</div><div class="screen-round"><span class="screen-category ${category.className}">${esc(category.label)}</span><strong>${Number(publicState.currentIndex) + 1}</strong><span>/ ${Number(publicState.totalQuestions) || 0}</span></div></header><section class="screen-question-wrap"><p class="screen-q-title">${esc(question.title || `문제 ${Number(publicState.currentIndex) + 1}`)}</p><div class="screen-question-content ${image ? 'has-image' : ''}">${image ? `<img class="screen-question-image" src="${image}" alt="${esc(question.imageAlt || '문제 참고 이미지')}">` : ''}<h1 class="screen-question ${questionSizeClass(question.question)}">${richText(question.question || '문제를 준비 중입니다.')}</h1></div>${publicState.answerVisible ? `<div class="screen-answer"><span>정답</span><strong class="${answerSizeClass(question.answer)}">${richText(question.answer || '정답 미입력')}</strong>${question.explanation ? `<p>${richText(question.explanation)}</p>` : ''}</div>` : ''}</section><footer class="screen-footer"><div class="screen-timer-copy"><span data-timer-label>${remaining <= 0 ? '시간 종료' : '남은 시간'}</span><strong data-timer-value class="${timerClass(publicState.timer)}">${formatTime(remaining)}</strong></div><div class="screen-motto">${esc(messages.tagline ?? 'SIGMA GOLDEN BELL')}</div></footer><div class="screen-progress"><div data-timer-progress></div></div>${renderScreenTool()}</main>`;
   bindScreenEvents();
   refreshTimerDom();
 }
@@ -1233,6 +1369,7 @@ function renderModal() {
     <label for="q-image-alt">사진 설명</label><input id="q-image-alt" maxlength="160" value="${esc(question.imageAlt)}"><span class="field-help">사진은 JSON 백업에 포함됩니다. ${modal.imageLoading ? '사진 처리 중…' : ''}</span></div>
     <div class="field wide"><label for="q-answer">정답</label><input id="q-answer" maxlength="500" value="${esc(question.answer)}"><span class="field-help">프로젝터 권장 200자</span></div>
     <div class="field wide"><label for="q-explanation">해설 (정답 공개 시 프로젝터 표시)</label><textarea id="q-explanation" maxlength="1500">${esc(question.explanation)}</textarea><span class="field-help">프로젝터 권장 400자</span></div>
+    <section class="wide math-editor-preview" aria-label="문제 렌더링 미리보기"><h3>문제·수식 미리보기</h3><p class="field-help">인라인 $x^2$, 별도 줄 $$x^2$$ · 달러 기호는 \\$ · 오류가 있으면 원문을 표시합니다.</p><div id="question-math-preview">${renderQuestionMathPreview(question)}</div></section>
     <div class="field wide private-field"><label for="q-acceptedAnswers">인정 답안 (진행자 전용)</label><textarea id="q-acceptedAnswers" maxlength="2000">${esc(question.acceptedAnswers)}</textarea></div>
     <div class="field wide private-field"><label for="q-judgeNote">판정 메모 (진행자 전용)</label><textarea id="q-judgeNote" maxlength="2000">${esc(question.judgeNote)}</textarea></div>
     <div class="field wide private-field"><label for="q-note">진행 메모 (진행자 전용)</label><textarea id="q-note" maxlength="2000">${esc(question.note)}</textarea></div>
@@ -1253,6 +1390,22 @@ function captureQuestionDraft() {
   if (altInput) modal.question.imageAlt = altInput.value;
 }
 function bindEvents() {
+  const invalidateBatch = () => {
+    if (importDraft?.busy) return;
+    importDraft = { text: document.getElementById('batch-text').value, format: document.getElementById('batch-format').value, mode: importDraft?.mode || 'append' };
+    const preview = document.querySelector('.import-preview');
+    if (preview) preview.innerHTML = '<p>입력이 변경되었습니다. 파싱·미리보기를 다시 실행해주세요.</p>';
+  };
+  document.getElementById('batch-text')?.addEventListener('input', invalidateBatch);
+  document.getElementById('batch-format')?.addEventListener('change', invalidateBatch);
+  document.getElementById('batch-file')?.addEventListener('change', readBatchFile);
+  document.getElementById('batch-form')?.addEventListener('submit', event => { event.preventDefault(); parseBatch(); });
+  document.getElementById('batch-mode')?.addEventListener('change', event => { importDraft.mode = event.target.value; render(); });
+  document.querySelectorAll('[data-startup-check]').forEach(input => input.addEventListener('change', () => input.checked ? startupChecks.add(input.dataset.startupCheck) : startupChecks.delete(input.dataset.startupCheck)));
+  for (const field of ['question', 'answer', 'explanation']) document.getElementById(`q-${field}`)?.addEventListener('input', () => {
+    captureQuestionDraft();
+    document.getElementById('question-math-preview').innerHTML = renderQuestionMathPreview(modal.question);
+  });
   document.getElementById('run-settings-form')?.addEventListener('submit', event => { event.preventDefault(); saveRunSettings(); });
   document.getElementById('manual-timer-form')?.addEventListener('submit', event => { event.preventDefault(); setManualTimer(document.getElementById('manual-timer').value); });
   document.querySelectorAll('[data-reserve-id]').forEach(element => element.addEventListener('click', () => useReserve(element.dataset.reserveId, element.dataset.reserveMode)));
@@ -1294,6 +1447,8 @@ function focusModal() {
 
 function handleAction(action) {
   const question = currentQuestion();
+  if (action === 'batch-apply') return applyBatch();
+  if (action === 'preflight') return runPreflight();
   if (action === 'reserve-picker') { modal = { type: 'reserve' }; return render(); }
   if (action === 'runtime-return') return returnToPrevious();
   if (action === 'runtime-clear') return clearInterventions();
@@ -1335,10 +1490,14 @@ function handleAction(action) {
   }
   if (action === 'change-pin') return changePin();
   if (action === 'reset-all' && confirm('문제와 행사 설정을 모두 초기화할까요? 진행 PIN은 유지됩니다.')) {
+    backupReadToken++;
     downloadBackup('before-reset');
+    const previous = state;
+    const wasBlocked = persistenceBlocked;
     persistenceBlocked = false;
     state = defaultState();
-    saveState();
+    if (!saveState()) { state = previous; persistenceBlocked = wasBlocked; return; }
+    clearPreparationDrafts();
     return render();
   }
 }
@@ -1353,6 +1512,8 @@ function openScreen() {
 }
 
 function lockConsole() {
+  backupReadToken++;
+  clearPreparationDrafts();
   if (state.timer.running) state.timer.remaining = getTimerRemaining(state.timer);
   state.timer.running = false;
   state.timer.endAt = null;
@@ -1652,7 +1813,9 @@ function importData(event) {
     return;
   }
   const reader = new FileReader();
+  const token = ++backupReadToken;
   reader.onload = () => {
+    if (token !== backupReadToken || !state || !isUnlocked()) return;
     try {
       const parsed = JSON.parse(reader.result);
       if (!parsed || !Array.isArray(parsed.questions)) throw new Error('invalid-backup');
@@ -1670,11 +1833,13 @@ function importData(event) {
       state.timer.running = false;
       state.timer.endAt = null;
       state.answerVisible = false;
+      state.runtime.returns.forEach(position => { position.answerVisible = false; });
       if (!saveState()) {
         state = previous;
         persistenceBlocked = wasBlocked;
         throw new Error('storage-limit');
       }
+      clearPreparationDrafts();
       render();
       syncTicker();
       toast('백업을 안전하게 불러왔습니다.');
@@ -1733,3 +1898,8 @@ if (IS_SCREEN) {
 } else {
   renderAuth();
 }
+
+// Warm all local math fonts while connected, including glyphs not used yet.
+document.fonts?.forEach(font => {
+  if (font.family.startsWith('KaTeX_')) font.load().catch(() => {});
+});
