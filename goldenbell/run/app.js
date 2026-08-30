@@ -27,11 +27,17 @@ const SCREEN_SESSION_ID = IS_SCREEN ? screenHash.get('session') : null;
 const channel = 'BroadcastChannel' in window ? new BroadcastChannel(CHANNEL_NAME) : null;
 
 const categoryMeta = {
-  basic: { label: '기본문제', className: 'blue' },
+  basic: { label: '기본', className: 'blue' },
   hard: { label: '고난도', className: 'red' },
-  revival: { label: '스페셜', className: 'green' },
+  revival: { label: '패자부활', className: 'green' },
   tiebreak: { label: '등수결정', className: 'yellow' },
 };
+
+const roundLabels = { main1: '본게임1', revival1: '패자부활전1', main2: '본게임2', revival2: '패자부활전2', main3: '본게임 후반', final: '등수결정전' };
+const usageLabels = { active: '사용', reserve: '예비', disabled: '미사용' };
+const difficultyLabels = { easy: '쉬움', normal: '보통', hard: '어려움', extreme: '최상' };
+const reviewLabels = { draft: '초안', 'self-reviewed': '본인 검수', 'peer-reviewed': '교차 검수', final: '최종 확정' };
+let questionFilters = {};
 
 const screenModeMeta = {
   lobby: { label: '대기 화면', shortLabel: '대기' },
@@ -700,7 +706,7 @@ function renderLive() {
           ${question ? `<div class="primary-controls"><button class="btn timer-toggle" data-action="timer-toggle"><span>${state.timer.running ? '타이머 일시정지' : remaining <= 0 ? '타이머 다시 시작' : '타이머 시작'}</span><kbd>Space</kbd></button><button class="btn presentation-next" data-action="next-step" ${state.displayMode === 'question' && !state.answerVisible && !question.answer ? 'disabled' : ''}><span>${presentationAdvanceLabel()}</span><kbd>→</kbd></button></div>
           <div class="transport-controls"><button class="btn" data-action="prev" ${state.currentIndex === 0 ? 'disabled' : ''}>← 이전 문제</button><button class="btn" data-action="reset-timer">시간 초기화</button><button class="btn" data-action="edit-current">현재 문제 수정</button><button class="btn" data-action="next" ${state.currentIndex >= total - 1 ? 'disabled' : ''}>다음 문제 →</button></div>` : `<div class="empty-state compact"><p>문제 편집에서 첫 문제를 추가해주세요.</p></div>`}
         </article>
-        ${question ? `<article class="card current-question-card"><div class="stage-line"><div class="row">${categoryBadge(question)}<span class="question-index">전체 ${state.currentIndex + 1} / ${total}</span></div><span class="question-title">${esc(question.title)}</span></div>${question.image ? `<img class="operator-question-image" src="${safeImage(question.image)}" alt="${esc(question.imageAlt || '문제 참고 이미지')}">` : ''}<div class="operator-question ${questionSizeClass(question.question)}">${multiline(question.question || '아직 문제 내용이 입력되지 않았습니다.')}</div><div class="operator-answer ${state.answerVisible ? 'visible' : ''}"><span>정답</span><strong>${multiline(question.answer || '미입력')}</strong>${question.explanation ? `<p>${multiline(question.explanation)}</p>` : ''}${question.note ? `<small>진행 메모 · ${multiline(question.note)}</small>` : ''}</div></article>` : ''}
+        ${question ? `<article class="card current-question-card"><div class="stage-line"><div class="row">${categoryBadge(question)}<span class="question-index">전체 ${state.currentIndex + 1} / ${total}</span></div><span class="question-title">${esc(question.title)}</span></div>${question.image ? `<img class="operator-question-image" src="${safeImage(question.image)}" alt="${esc(question.imageAlt || '문제 참고 이미지')}">` : ''}<div class="operator-question ${questionSizeClass(question.question)}">${multiline(question.question || '아직 문제 내용이 입력되지 않았습니다.')}</div><div class="operator-answer visible"><span>진행자 전용 · 정답</span><strong>${multiline(question.answer || '미입력')}</strong>${question.explanation ? `<p>${multiline(question.explanation)}</p>` : ''}${question.acceptedAnswers ? `<p>인정 답안 · ${multiline(question.acceptedAnswers)}</p>` : ''}${question.judgeNote ? `<p>판정 메모 · ${multiline(question.judgeNote)}</p>` : ''}${question.note ? `<small>진행 메모 · ${multiline(question.note)}</small>` : ''}</div></article>` : ''}
       </section>
       <aside class="stack control-rail">
         ${question ? `<article class="card timer-card"><div class="timer-status"><span data-timer-label>${remaining <= 0 ? '시간 종료' : '남은 시간'}</span><span>${question.seconds}초 문제</span></div><div class="timer ${timerClass(state.timer)}" data-timer-value>${formatTime(remaining)}</div><div class="timer-track"><div data-timer-progress></div></div><div class="timer-adjust"><button class="btn sm" data-action="timer-minus">-5초</button><button class="btn sm" data-action="reset-timer">초기화</button><button class="btn sm" data-action="timer-plus">+5초</button></div></article>` : ''}
@@ -712,15 +718,56 @@ function renderLive() {
 }
 
 function renderQuestions() {
-  const counts = Object.keys(categoryMeta).map(key => [key, state.questions.filter(question => question.category === key).length]);
+  const visible = filteredQuestions();
   const missing = state.questions.filter(question => !question.question || !question.answer || hasProjectionOverflow(question)).length;
+  const unfinal = state.questions.filter(question => question.usageStatus === 'active' && question.reviewStatus !== 'final').length;
+  const filters = [
+    ['category', '구분', Object.fromEntries(Object.entries(categoryMeta).map(([key, value]) => [key, value.label]))],
+    ['round', '라운드', { none: '미지정', ...roundLabels }], ['usageStatus', '사용 상태', usageLabels],
+    ['difficulty', '난이도', difficultyLabels], ['reviewStatus', '검수 상태', reviewLabels],
+    ['author', '출제자', Object.fromEntries([...new Set(state.questions.map(q => q.author).filter(Boolean))].sort().map(author => [author, author]))],
+  ];
   return `
     <div class="content-layout">
-      <section class="card content-card"><div class="section-head responsive-head"><div><p class="eyebrow">출제 콘솔</p><h2>문제 슬라이드</h2><p class="sub">총 ${state.questions.length}문제 · 확인 필요 ${missing}문제</p></div><button class="btn primary" data-action="add-question">+  문제 추가</button></div>
-      <div class="filter-row">${counts.map(([key, count]) => `<span class="badge ${categoryMeta[key].className}">${categoryMeta[key].label} ${count}</span>`).join('')}</div>
-      ${state.questions.length ? `<div class="q-list">${state.questions.map((question, index) => `<article class="q-item ${index === state.currentIndex ? 'current' : ''} ${!question.question || !question.answer || hasProjectionOverflow(question) ? 'incomplete' : ''}"><div class="q-no"><span>${String(index + 1).padStart(2, '0')}</span>${index === state.currentIndex ? '<small>현재</small>' : ''}</div><div class="q-copy"><strong>${esc(question.question || question.title || '미입력 문제')}</strong><span>${esc(categoryMeta[question.category].label)} · ${question.seconds}초${question.image ? ' · 사진 포함' : ''}${!question.question || !question.answer ? ' · 문제/정답 확인 필요' : hasProjectionOverflow(question) ? ' · 프로젝터 길이 확인 필요' : question.explanation ? ' · 해설 포함' : ''}</span></div><div class="q-actions"><button class="btn sm" data-edit-q="${esc(question.id)}">수정</button><button class="btn sm" data-go-q="${index}">송출</button><button class="btn sm danger-ghost" data-delete-q="${esc(question.id)}">삭제</button></div></article>`).join('')}</div>` : `<div class="empty-state"><h3>문제가 없습니다</h3><p>새 문제를 추가해주세요.</p></div>`}</section>
-      <aside class="stack side-notes"><article class="card"><p class="eyebrow">현장 전 확인</p><h2>프레젠테이션 체크</h2><ul class="check-list"><li class="${missing ? '' : 'done'}">문제와 정답 입력</li><li>수식·기호의 프로젝터 가독성</li><li>문제별 제한시간</li><li>정답 해설과 진행 메모 구분</li><li>예비 JSON 백업</li></ul></article><article class="card note-card"><strong>PPT처럼 사용하기</strong><p>문제 하나가 슬라이드 하나입니다. 정답 공개 버튼을 누르면 같은 화면에서 정답과 해설이 이어서 나옵니다.</p></article></aside>
+      <section class="card content-card"><div class="section-head responsive-head"><div><p class="eyebrow">출제 콘솔</p><h2>문제 슬라이드</h2><p class="sub">전체 ${state.questions.length}문제 · 검색 결과 ${visible.length}문제 · 내용 확인 ${missing}문제</p></div><button class="btn primary" data-action="add-question">+ 문제 추가</button></div>
+      <form id="question-filters" class="question-filters"><div class="field filter-search"><label for="filter-search">문제·정답·ID 검색</label><input id="filter-search" name="search" type="search" value="${esc(questionFilters.search || '')}" placeholder="검색어 입력"></div>
+      ${filters.map(([key, label, values]) => `<div class="field"><label for="filter-${key}">${label}</label><select id="filter-${key}" name="${key}"><option value="">전체</option>${selectOptions(values, questionFilters[key])}</select></div>`).join('')}
+      <label class="filter-checkbox"><input name="hideDisabled" type="checkbox" ${questionFilters.hideDisabled ? 'checked' : ''}>미사용 숨기기</label><div class="row"><button class="btn sm" type="submit">필터 적용</button><button class="btn sm ghost" type="button" data-action="clear-filters">초기화</button></div></form>
+      ${unfinal ? `<p class="overflow-notice">사용 문제 중 ${unfinal}개가 최종 확정 전입니다. 편집·저장은 계속할 수 있습니다.</p>` : ''}
+      <div class="q-list">${visible.map((question, position) => {
+        const index = state.questions.indexOf(question);
+        return `<article class="q-item usage-${question.usageStatus} ${index === state.currentIndex ? 'current' : ''}"><div class="q-no"><span>${String(index + 1).padStart(2, '0')}</span>${index === state.currentIndex ? '<small>현재</small>' : ''}</div><div class="q-copy"><strong>${esc(question.question || question.title || '미입력 문제')}</strong><span>${esc(question.id)} · ${esc(categoryMeta[question.category].label)} · ${esc(roundLabels[question.round] || '라운드 미지정')} · ${question.timeLimit}초</span><div class="row wrap"><span class="badge">${usageLabels[question.usageStatus]}</span><span class="badge">${difficultyLabels[question.difficulty]}</span><span class="badge ${question.reviewStatus === 'final' ? 'green' : ''}">${reviewLabels[question.reviewStatus]}</span><span>${esc(question.author || '출제자 미지정')}</span></div></div><div class="q-actions"><button class="btn sm" data-move-q="${esc(question.id)}" data-direction="-1" aria-label="${index + 1}번 문제 위로" ${position === 0 ? 'disabled' : ''}>↑</button><button class="btn sm" data-move-q="${esc(question.id)}" data-direction="1" aria-label="${index + 1}번 문제 아래로" ${position === visible.length - 1 ? 'disabled' : ''}>↓</button><button class="btn sm" data-edit-q="${esc(question.id)}">수정</button><button class="btn sm" data-go-q="${index}">송출</button><button class="btn sm danger-ghost" data-delete-q="${esc(question.id)}">삭제</button></div></article>`;
+      }).join('') || '<div class="empty-state"><h3>조건에 맞는 문제가 없습니다</h3><p>필터를 초기화하거나 새 문제를 추가해주세요.</p></div>'}</div></section>
+      <aside class="stack side-notes"><article class="card"><p class="eyebrow">전체 문제 기준</p><h2>검수 현황</h2><div class="review-stats"><div class="stat"><span>전체</span><strong>${state.questions.length}</strong></div>${Object.entries(reviewLabels).map(([key, label]) => `<div class="stat"><span>${label}</span><strong>${state.questions.filter(question => question.reviewStatus === key).length}</strong></div>`).join('')}</div></article><article class="card note-card"><strong>문제 유형과 라운드는 별개입니다</strong><p>예비 문제는 본 진행과 분리해 보관하세요. 위·아래 버튼은 현재 필터에 보이는 인접 문제와 위치를 바꾸며, ID는 유지됩니다.</p><p>인정답안·판정 메모·진행 메모·출제자·검수 상태는 프로젝터로 보내지 않습니다.</p></article></aside>
     </div>`;
+}
+
+function selectOptions(labels, selected) {
+  return Object.entries(labels).map(([value, label]) => `<option value="${esc(value)}" ${value === selected ? 'selected' : ''}>${esc(label)}</option>`).join('');
+}
+
+function filteredQuestions() {
+  const search = (questionFilters.search || '').trim().toLocaleLowerCase();
+  return state.questions.filter(question => {
+    if (questionFilters.hideDisabled && question.usageStatus === 'disabled') return false;
+    if (search && ![question.id, question.question, question.answer].some(value => value.toLocaleLowerCase().includes(search))) return false;
+    return ['category', 'round', 'usageStatus', 'difficulty', 'author', 'reviewStatus'].every(field => !questionFilters[field] || (field === 'round' ? question.round || 'none' : question[field]) === questionFilters[field]);
+  });
+}
+
+function moveQuestion(id, direction) {
+  const visible = filteredQuestions();
+  const position = visible.findIndex(question => question.id === id);
+  const target = visible[position + direction];
+  if (position < 0 || !target) return;
+  const currentId = currentQuestion()?.id;
+  update(next => {
+    const from = next.questions.findIndex(question => question.id === id);
+    const to = next.questions.findIndex(question => question.id === target.id);
+    [next.questions[from], next.questions[to]] = [next.questions[to], next.questions[from]];
+    next.questions.forEach((question, index) => { question.order = index + 1; });
+    next.currentIndex = Math.max(0, next.questions.findIndex(question => question.id === currentId));
+  });
 }
 
 function renderSettings() {
@@ -785,10 +832,52 @@ function bindScreenEvents() {
 function renderModal() {
   if (modal.type !== 'question') return '';
   const question = modal.question;
-  return `<div class="modal-backdrop" data-action="close-backdrop"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="section-head"><div><p class="eyebrow">출제 콘솔</p><h2 id="modal-title">${question.id ? '문제 수정' : '문제 추가'}</h2></div><button class="btn sm ghost" data-action="close-modal" aria-label="닫기">닫기</button></div><div class="form-grid"><div class="field"><label for="q-category">구분</label><select id="q-category">${Object.entries(categoryMeta).map(([key, value]) => `<option value="${key}" ${question.category === key ? 'selected' : ''}>${value.label}</option>`).join('')}</select></div><div class="field"><label for="q-seconds">제한시간(초)</label><input id="q-seconds" type="number" min="1" max="600" value="${question.seconds || 30}"></div><div class="field wide"><label for="q-title">문제 이름</label><input id="q-title" maxlength="100" value="${esc(question.title || '')}" placeholder="예: 기본문제 1"></div><div class="field wide"><label for="q-question">문제</label><textarea id="q-question" maxlength="600" placeholder="문제 내용을 입력하세요">${esc(question.question || '')}</textarea><span class="field-help">600자 이내 · 긴 문제는 의미 단위로 줄바꿈해주세요.</span></div><div class="field wide"><label for="q-image">문제 그림·사진 (선택)</label><label class="image-picker" for="q-image">${question.image ? `<img src="${safeImage(question.image)}" alt="${esc(question.imageAlt || '선택한 문제 이미지')}"><span>다른 사진으로 교체</span>` : '<strong>사진 선택</strong><span>JPG·PNG·WebP · 자동으로 프로젝터용 압축</span>'}<input id="q-image" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden></label>${question.image ? '<button class="btn sm danger-ghost image-remove" type="button" data-action="remove-question-image">사진 삭제</button>' : ''}<input id="q-image-alt" maxlength="160" value="${esc(question.imageAlt || '')}" placeholder="사진 설명 (예: 좌표평면 위의 삼각형 ABC)"><span class="field-help">사진은 JSON 백업에도 함께 포함됩니다. 여러 장이 필요하면 한 장으로 합쳐 올려주세요.</span></div><div class="field wide"><label for="q-answer">정답</label><input id="q-answer" maxlength="200" value="${esc(question.answer || '')}" placeholder="정답"></div><div class="field wide"><label for="q-explanation">정답 해설 (프로젝터에 표시)</label><textarea id="q-explanation" maxlength="400" placeholder="정답 공개 시 함께 보여줄 짧은 해설">${esc(question.explanation || '')}</textarea></div><div class="field wide"><label for="q-note">진행자 메모 (프로젝터에 표시하지 않음)</label><textarea id="q-note" maxlength="2000" placeholder="판정 기준, 진행 주의사항 등">${esc(question.note || '')}</textarea></div><div class="wide modal-actions"><button class="btn" data-action="close-modal">취소</button><button class="btn primary" data-action="save-question">저장</button></div></div></section></div>`;
+  const selects = [
+    ['category', '구분', Object.fromEntries(Object.entries(categoryMeta).map(([key, meta]) => [key, meta.label]))],
+    ['round', '라운드', { '': '미지정', ...roundLabels }],
+    ['usageStatus', '사용 상태', usageLabels], ['difficulty', '난이도', difficultyLabels], ['reviewStatus', '검수 상태', reviewLabels],
+  ];
+  return `<div class="modal-backdrop" data-action="close-backdrop"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="section-head"><div><p class="eyebrow">출제 콘솔</p><h2 id="modal-title">${question.id ? '문제 수정' : '문제 추가'}</h2></div><button class="btn sm ghost" data-action="close-modal" aria-label="닫기">닫기</button></div>
+    <form id="question-form" class="form-grid">
+    <div class="field wide"><label for="q-id">고유 ID (순서를 바꿔도 유지)</label><input id="q-id" readonly value="${esc(question.id || '저장 시 자동 생성')}"></div>
+    ${selects.map(([field, label, values]) => `<div class="field"><label for="q-${field}">${label}</label><select id="q-${field}">${selectOptions(values, question[field] ?? '')}</select></div>`).join('')}
+    <div class="field"><label for="q-seconds">제한시간(초)</label><input id="q-seconds" type="number" min="1" max="600" step="1" required value="${esc(question.timeLimit ?? 30)}"></div>
+    <div class="field"><label for="q-author">출제자</label><input id="q-author" maxlength="100" value="${esc(question.author)}"></div>
+    <div class="field"><label for="q-title">문제 이름</label><input id="q-title" maxlength="100" value="${esc(question.title)}"></div>
+    <div class="field wide"><label for="q-question">문제</label><textarea id="q-question" maxlength="2000">${esc(question.question)}</textarea><span class="field-help">프로젝터 권장 600자 · 긴 기존 내용은 보존되며 송출에서는 축약됩니다.</span></div>
+    <div class="field wide"><label for="q-image">문제 그림·사진 (선택)</label><label class="image-picker" for="q-image">${question.image ? `<img src="${safeImage(question.image)}" alt="${esc(question.imageAlt || '선택한 문제 이미지')}"><span>다른 사진으로 교체</span>` : '<strong>사진 선택</strong><span>JPG·PNG·WebP · 자동 압축</span>'}<input id="q-image" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden></label>
+    ${question.image ? '<button class="btn sm danger-ghost image-remove" type="button" data-action="remove-question-image">사진 삭제</button>' : ''}
+    <label for="q-image-alt">사진 설명</label><input id="q-image-alt" maxlength="160" value="${esc(question.imageAlt)}"><span class="field-help">사진은 JSON 백업에 포함됩니다. ${modal.imageLoading ? '사진 처리 중…' : ''}</span></div>
+    <div class="field wide"><label for="q-answer">정답</label><input id="q-answer" maxlength="500" value="${esc(question.answer)}"><span class="field-help">프로젝터 권장 200자</span></div>
+    <div class="field wide"><label for="q-explanation">해설 (정답 공개 시 프로젝터 표시)</label><textarea id="q-explanation" maxlength="1500">${esc(question.explanation)}</textarea><span class="field-help">프로젝터 권장 400자</span></div>
+    <div class="field wide private-field"><label for="q-acceptedAnswers">인정 답안 (진행자 전용)</label><textarea id="q-acceptedAnswers" maxlength="2000">${esc(question.acceptedAnswers)}</textarea></div>
+    <div class="field wide private-field"><label for="q-judgeNote">판정 메모 (진행자 전용)</label><textarea id="q-judgeNote" maxlength="2000">${esc(question.judgeNote)}</textarea></div>
+    <div class="field wide private-field"><label for="q-note">진행 메모 (진행자 전용)</label><textarea id="q-note" maxlength="2000">${esc(question.note)}</textarea></div>
+    <p class="field-help wide">작성 ${esc(question.createdAt)} · 수정 ${esc(question.updatedAt)}<br>사용 문제는 최종 확정 상태를 권장합니다. 초안도 저장할 수 있습니다.</p>
+    <div class="wide modal-actions"><button type="button" class="btn" data-action="close-modal">취소</button><button type="submit" class="btn primary" ${modal.imageLoading ? 'disabled' : ''}>저장</button></div>
+    </form></section></div>`;
 }
 
+function captureQuestionDraft() {
+  if (!modal?.question) return;
+  for (const field of ['category', 'round', 'usageStatus', 'difficulty', 'reviewStatus', 'author', 'title', 'question', 'answer', 'explanation', 'acceptedAnswers', 'judgeNote', 'note']) {
+    const input = document.getElementById(`q-${field}`);
+    if (input) modal.question[field] = field === 'round' ? input.value || null : input.value;
+  }
+  const timeInput = document.getElementById('q-seconds');
+  if (timeInput) modal.question.timeLimit = timeInput.value;
+  const altInput = document.getElementById('q-image-alt');
+  if (altInput) modal.question.imageAlt = altInput.value;
+}
 function bindEvents() {
+  document.getElementById('question-form')?.addEventListener('submit', event => { event.preventDefault(); saveQuestion(); });
+  document.getElementById('question-filters')?.addEventListener('submit', event => {
+    event.preventDefault();
+    questionFilters = Object.fromEntries(new FormData(event.currentTarget));
+    render();
+  });
+  document.querySelectorAll('[data-move-q]').forEach(element => element.addEventListener('click', () => moveQuestion(element.dataset.moveQ, Number(element.dataset.direction))));
   document.querySelectorAll('[data-tab]').forEach(element => element.addEventListener('click', () => update(next => { next.tab = element.dataset.tab; })));
   document.querySelectorAll('[data-screen-mode]').forEach(element => element.addEventListener('click', () => setScreenMode(element.dataset.screenMode)));
   document.querySelectorAll('[data-action]').forEach(element => {
@@ -815,6 +904,7 @@ function focusModal() {
 
 function handleAction(action) {
   const question = currentQuestion();
+  if (action === 'clear-filters') { questionFilters = {}; return render(); }
   if (action === 'open-screen') return openScreen();
   if (action === 'lock') return lockConsole();
   if (action === 'export') return exportData();
@@ -831,6 +921,9 @@ function handleAction(action) {
   if (action === 'close-modal' || action === 'close-backdrop') { modal = null; return render(); }
   if (action === 'save-question') return saveQuestion();
   if (action === 'remove-question-image' && modal?.type === 'question') {
+    captureQuestionDraft();
+    modal.imageRequest = (modal.imageRequest || 0) + 1;
+    modal.imageLoading = false;
     modal.question.image = '';
     modal.question.imageAlt = '';
     return render();
@@ -953,7 +1046,8 @@ function adjustTimer(delta) {
 
 function openQuestion(id = null) {
   const existing = id ? state.questions.find(question => question.id === id) : null;
-  modal = { type: 'question', question: existing ? { ...existing } : { id: null, category: 'basic', title: '', question: '', answer: '', explanation: '', note: '', image: '', imageAlt: '', seconds: 30 } };
+  if (id && !existing) return;
+  modal = { type: 'question', question: existing ? { ...existing } : { ...migrateQuestion({ title: '' }), id: null } };
   render();
 }
 
@@ -998,73 +1092,68 @@ async function compressQuestionImage(file) {
 async function handleQuestionImage(event) {
   const file = event.target.files?.[0];
   if (!file || !modal?.question) return;
+  captureQuestionDraft();
+  const editor = modal;
+  const request = editor.imageRequest = (editor.imageRequest || 0) + 1;
+  editor.imageLoading = true;
+  render();
   try {
-    toast('사진을 프로젝터용으로 압축하고 있습니다…');
     const image = await compressQuestionImage(file);
-    modal.question.image = image;
-    modal.question.imageAlt ||= file.name.replace(/\.[^.]+$/, '');
-    render();
+    if (modal !== editor || request !== editor.imageRequest) return;
+    captureQuestionDraft();
+    editor.question.image = image;
+    editor.question.imageAlt ||= file.name.replace(/\.[^.]+$/, '');
     toast('사진을 추가했습니다. 문제 저장을 눌러 완료해주세요.');
   } catch {
-    toast('사진을 처리하지 못했습니다. 12MB 이하의 JPG·PNG·WebP를 사용해주세요.');
+    if (modal === editor && request === editor.imageRequest) {
+      captureQuestionDraft();
+      toast('사진을 처리하지 못했습니다. 12MB 이하의 JPG·PNG·WebP를 사용해주세요.');
+    }
+  } finally {
+    if (modal === editor && request === editor.imageRequest) {
+      editor.imageLoading = false;
+      render();
+    }
   }
 }
 
 function saveQuestion() {
-  if (!modal?.question) return;
+  if (!modal?.question || modal.imageLoading) return;
   if (!modal.question.id && state.questions.length >= 500) return toast('문제는 최대 500개까지 저장할 수 있습니다.');
-  const category = document.getElementById('q-category').value;
-  const seconds = Math.round(clampNumber(document.getElementById('q-seconds').value, 1, 600, 30));
-  const questionText = document.getElementById('q-question').value.trim();
-  const answerText = document.getElementById('q-answer').value.trim();
-  const explanationText = document.getElementById('q-explanation').value.trim();
-  if (questionText.length > 600 || answerText.length > 200 || explanationText.length > 400) {
-    return toast('프로젝터 가독성을 위해 문제 600자·정답 200자·해설 400자 이하로 줄여주세요.');
-  }
-  const data = migrateQuestion({
-    ...modal.question,
-    id: modal.question.id || createId(),
-    category: Object.hasOwn(categoryMeta, category) ? category : 'basic',
-    title: safeText(document.getElementById('q-title').value.trim(), 100),
-    question: questionText,
-    answer: answerText,
-    explanation: explanationText,
-    note: safeText(document.getElementById('q-note').value.trim(), 2000),
-    image: safeImage(modal.question.image),
-    imageAlt: safeText(document.getElementById('q-image-alt').value.trim(), 160),
-    seconds,
-    timeLimit: seconds,
-    updatedAt: new Date().toISOString(),
-  }, state.questions.length);
+  captureQuestionDraft();
+  const draft = modal.question;
+  const errors = validateQuestion(draft);
+  if (errors.length) return toast(errors[0].message);
+  const now = new Date().toISOString();
+  const data = migrateQuestion({ ...draft, id: draft.id || createId(), createdAt: draft.createdAt || now, updatedAt: now }, state.questions.length);
   const index = state.questions.findIndex(question => question.id === data.id);
-  const isCurrent = index === state.currentIndex;
-  const previousQuestions = state.questions.map(question => ({ ...question }));
-  if (index >= 0) state.questions[index] = { ...state.questions[index], ...data };
-  else state.questions.push({ ...data, order: state.questions.length + 1 });
+  const previous = structuredClone(state);
+  if (index >= 0) state.questions[index] = data;
+  else state.questions.push(data);
   if (totalImageDataLength(state.questions) > MAX_TOTAL_IMAGE_DATA_LENGTH) {
-    state.questions = previousQuestions;
-    return toast('전체 사진 용량이 너무 큽니다. 기존 사진을 줄이거나 삭제한 뒤 다시 저장해주세요.');
+    state = previous;
+    return toast('전체 사진 용량이 너무 큽니다. 사진을 줄인 뒤 다시 저장해주세요.');
   }
-  if (isCurrent && !state.timer.running) state.timer.remaining = seconds;
+  if (index === state.currentIndex && !state.timer.running) state.timer.remaining = data.timeLimit;
+  if (!saveState()) { state = previous; return; }
   modal = null;
-  if (!saveState()) {
-    state.questions = previousQuestions;
-    return render();
-  }
   render();
-  toast(data.question && data.answer ? '문제를 저장했습니다.' : '저장했습니다. 문제와 정답을 다시 확인해주세요.');
+  toast(hasProjectionOverflow(data) ? '저장했습니다. 긴 내용은 프로젝터에서 축약됩니다.' : data.usageStatus === 'active' && data.reviewStatus !== 'final' ? '저장했습니다. 사용 전 최종 검수를 완료해주세요.' : '문제를 저장했습니다.');
 }
 
 function deleteQuestion(id) {
   const index = state.questions.findIndex(question => question.id === id);
   if (index < 0 || !confirm(`'${state.questions[index].title}' 문제를 삭제할까요?`)) return;
-  state.questions.splice(index, 1);
-  state.questions.forEach((question, questionIndex) => { question.order = questionIndex + 1; });
-  state.currentIndex = Math.min(state.currentIndex, Math.max(0, state.questions.length - 1));
-  state.answerVisible = false;
-  resetTimer(false);
-  saveState();
-  render();
+  const currentId = currentQuestion()?.id;
+  update(next => {
+    next.questions.splice(index, 1);
+    next.questions.forEach((question, position) => { question.order = position + 1; });
+    next.currentIndex = currentId === id ? Math.min(index, Math.max(0, next.questions.length - 1)) : Math.max(0, next.questions.findIndex(question => question.id === currentId));
+    if (currentId === id) {
+      next.answerVisible = false;
+      next.timer = { remaining: next.questions[next.currentIndex]?.timeLimit || 30, running: false, endAt: null };
+    }
+  });
 }
 
 function saveSettings() {
