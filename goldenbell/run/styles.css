@@ -315,6 +315,10 @@ button:disabled { cursor: not-allowed; }
 
 .control-rail { position: sticky; top: 14px; }
 .control-rail > .timer-card { order: -1; }
+.question-navigation { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.question-navigation .field { min-width: 0; }
+.question-navigation select { width: 100%; min-width: 0; }
+@media (max-width: 640px) { .question-navigation { grid-template-columns: 1fr; } }
 .timer-card { padding: 18px 20px; }
 .timer-status { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 11px; font-weight: 850; }
 .timer { margin: 7px 0 4px; color: white; font-size: clamp(62px, 6vw, 90px); font-weight: 950; line-height: 1; letter-spacing: -.075em; font-variant-numeric: tabular-nums; }

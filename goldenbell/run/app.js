@@ -108,7 +108,7 @@ function defaultState() {
     schemaVersion: SCHEMA_VERSION,
     event: {
       title: '2026 시그마 수학 골든벨',
-      date: '2026.10.23(금) 15:50~17:30',
+      date: '2026.10.30(금)',
       place: '체육관',
     },
     messages: {
@@ -126,7 +126,7 @@ function defaultState() {
     timer: { remaining: 30, running: false, endAt: null },
     tab: 'live',
     runtime: defaultRuntime(),
-    runSettings: { safetyLock: true, eventDate: '2026-10-23', startTime: '15:50', endTime: '17:30' },
+    runSettings: { safetyLock: true, showEventClock: false, eventDate: '2026-10-30', startTime: '15:50', endTime: '17:30' },
   };
   base.customScreens = createDefaultScreens(base);
   base.sequence = buildAutoSequence(base.questions);
@@ -208,7 +208,8 @@ function normalizePresentation(raw, next) {
     next.sequenceIndex = Math.max(0, position);
   } else next.sequenceIndex = next.sequence.length ? Math.round(clampNumber(raw.sequenceIndex, 0, next.sequence.length - 1, 0)) : -1;
   next.runtime = normalizeRuntime(raw.runtime, next.sequence.length);
-  next.runSettings = { safetyLock: raw.runSettings?.safetyLock !== false, eventDate: validEventDate(raw.runSettings?.eventDate) ? raw.runSettings.eventDate : '2026-10-23', startTime: validClockTime(raw.runSettings?.startTime) ? raw.runSettings.startTime : '15:50', endTime: validClockTime(raw.runSettings?.endTime) ? raw.runSettings.endTime : '17:30' };
+  next.runSettings = { safetyLock: raw.runSettings?.safetyLock !== false, showEventClock: raw.runSettings?.showEventClock === true, eventDate: validEventDate(raw.runSettings?.eventDate) && raw.runSettings.eventDate !== '2026-10-23' ? raw.runSettings.eventDate : '2026-10-30', startTime: validClockTime(raw.runSettings?.startTime) ? raw.runSettings.startTime : '15:50', endTime: validClockTime(raw.runSettings?.endTime) ? raw.runSettings.endTime : '17:30' };
+  if (/^2026\.10\.23\(금\)(?: 15:50~17:30)?$/.test(next.event.date)) next.event.date = '2026.10.30(금)';
   const item = activeItem(next);
   const index = item?.type === 'question' ? next.questions.findIndex(question => question.id === item.questionId) : -1;
   next.displayMode = index >= 0 ? 'question' : 'screen';
@@ -880,6 +881,7 @@ function renderLive() {
     <div class="transport-controls sequence-transport"><button class="btn" data-action="prev" ${cursor <= 0 ? 'disabled' : ''}>← 이전 항목</button><button class="btn primary" data-action="next" ${cursor >= total - 1 ? 'disabled' : ''}>다음 항목 →</button></div>
     ${question ? '<div class="row"><button class="btn sm ghost" data-action="reset-timer">시간 초기화 (R)</button><button class="btn sm ghost" data-action="edit-current">현재 문제 수정</button></div>' : ''}</article>
     ${question ? `<article class="card current-question-card"><div class="stage-line"><div class="row">${categoryBadge(question)}<span class="question-index">${esc(currentRoundLabel())}</span></div><span class="question-title">${esc(question.id)}</span></div>${question.image ? `<img class="operator-question-image" src="${safeImage(question.image)}" alt="${esc(question.imageAlt || '문제 참고 이미지')}">` : ''}<div class="operator-question ${questionSizeClass(question.question)}">${richText(question.question || '아직 문제 내용이 입력되지 않았습니다.')}</div><div class="operator-answer visible"><span>진행자 전용 · 정답</span><strong>${richText(question.answer || '미입력')}</strong>${question.explanation ? `<p>${richText(question.explanation)}</p>` : ''}${question.acceptedAnswers ? `<p>인정 답안 · ${multiline(question.acceptedAnswers)}</p>` : ''}${question.judgeNote ? `<p>판정 메모 · ${multiline(question.judgeNote)}</p>` : ''}${question.note ? `<small>진행 메모 · ${multiline(question.note)}</small>` : ''}</div></article>` : ''}
+    ${renderQuestionNavigation()}
     ${renderRuntimeControls()}
     </section><aside class="stack control-rail">${renderSlideSelector()}
     <article class="card overview-card"><p class="eyebrow">행사 진행</p><div class="section-head"><h2>${esc(currentRoundLabel())}</h2><strong>${position} / ${total}</strong></div><div class="progress"><div style="width:${progress}%"></div></div><p class="sub">현재 · ${esc(title)}</p><div class="next-item"><small>다음 항목</small><strong>${esc(sequenceItemLabel(liveSequence[cursor + 1]))}</strong></div></article>
@@ -888,6 +890,40 @@ function renderLive() {
     <article class="card shortcut-card"><h2>진행 단축키</h2><div class="shortcut-list"><span><kbd>Space</kbd>타이머</span><span><kbd>A</kbd>정답 공개/숨김</span><span><kbd>←</kbd><kbd>→</kbd>항목 이동</span><span><kbd>R</kbd>타이머 초기화</span></div></article>
     <article class="card"><h2>진행 백업</h2><p class="sub">현재 문제·사진·행사 순서·진행 위치를 함께 내려받습니다. 노트북 교체에 대비해 별도로 보관하세요.</p><button class="btn" data-action="export">현재 진행 JSON 백업</button></article>
     </aside></div>`;
+}
+
+const navigationGroups = { basic: '일반 문제', hard: '고난도 문제', revival: '패자부활전', final: '등수결정전' };
+
+function questionNavigationGroup(question) {
+  if (question.round === 'final' || question.category === 'tiebreak') return 'final';
+  if (['revival1', 'revival2'].includes(question.round) || question.category === 'revival') return 'revival';
+  return question.category === 'hard' ? 'hard' : 'basic';
+}
+
+function navigationItems(group) {
+  if (!Object.hasOwn(navigationGroups, group)) return [];
+  return effectiveSequence(state).flatMap((item, position) => {
+    const question = item.type === 'question' && state.questions.find(row => row.id === item.questionId);
+    return question && question.usageStatus !== 'disabled' && questionNavigationGroup(question) === group ? [{ item, question, position }] : [];
+  });
+}
+
+function jumpQuestionGroup(group, position) {
+  if (!navigationItems(group).some(row => row.position === position)) return toast('행사 구성에 해당 문제를 먼저 추가해주세요.');
+  if (!state.runtime.overlay && runtimePosition(state) === position) return toast('현재 진행 중인 문제입니다.');
+  return goRuntimePosition(position, true);
+}
+
+function renderQuestionNavigation() {
+  const cursor = runtimePosition(state);
+  const previous = state.runtime.returns.at(-1);
+  const returnItem = previous?.overlay || (previous?.currentInsertionId ? state.runtime.insertions.find(row => row.id === previous.currentInsertionId) : state.sequence[previous?.sequenceIndex]);
+  const returnLabel = returnItem?.questionId ? sequenceItemLabel({ type: 'question', questionId: returnItem.questionId }) : returnItem ? sequenceItemLabel(returnItem) : '';
+  return `<article class="card"><div class="section-head"><div><p class="eyebrow">구간별 바로 이동</p><h2>문제 이동·복귀</h2></div><button class="btn primary" data-action="runtime-return" ${previous ? '' : 'disabled'}>이동 전 문제·화면으로 복귀</button></div>${previous ? `<p class="sub">복귀 대상 · ${esc(returnLabel)} · 남은 시간 ${formatTime(previous.remaining)}초</p>` : ''}<div class="question-navigation">${Object.entries(navigationGroups).map(([group,label]) => {
+    const items = navigationItems(group);
+    const selected = items.find(row => row.position >= cursor) || items[0];
+    return `<div class="field"><label for="jump-${group}">${label} (${items.length})</label><select id="jump-${group}" ${items.length ? '' : 'disabled'}>${items.length ? items.map(row => `<option value="${row.position}" ${row === selected ? 'selected' : ''}>${row.position + 1}. ${esc(row.question.title || row.question.question || row.question.id)}${row.question.round ? ' · ' + esc(roundLabels[row.question.round]) : ''}${row.position === cursor && !state.runtime.overlay ? ' · 현재' : ''}</option>`).join('') : '<option>행사 구성에 등록된 문제 없음</option>'}</select><button class="btn" data-question-jump="${group}" ${items.length ? '' : 'disabled'}>${label} 이동</button></div>`;
+  }).join('')}</div><p class="sub">문제를 선택해 이동하면 현재 위치와 남은 시간을 기억합니다. 복귀 후 타이머는 직접 재개하세요. 패자부활 1·2차는 목록의 라운드 표시로 구분합니다.</p></article>`;
 }
 
 function renderRuntimeControls() {
@@ -910,12 +946,13 @@ function renderReservePicker() {
 
 function renderEventStatus() {
   const clock = eventClock(state);
-  return `<article class="card"><p class="eyebrow">행사 시간 · 진행자 전용</p><div class="event-clock"><div><small>${state.runtime.startedAt ? '시작 버튼 기준 경과' : '예정 시작 기준 경과'}</small><strong data-event-elapsed>${formatClock(clock.elapsed)}</strong></div><div><small>예정 종료까지</small><strong data-event-remaining>${formatClock(Math.abs(clock.remaining))}</strong></div></div><p class="sub">${esc(state.runSettings.eventDate)} · ${state.runSettings.startTime} ~ ${state.runSettings.endTime}</p><button class="btn sm" data-action="event-start">${state.runtime.startedAt ? '경과시간 다시 시작' : '지금 행사 시작'}</button></article><article class="card"><h2>라운드 진행</h2><ul class="round-progress">${Object.entries(roundProgress(state)).map(([round,row])=>`<li><span>${roundLabels[round]}</span><strong>${row.passed === row.total ? '완료' : row.passed + ' / ' + row.total}</strong></li>`).join('') || '<li>문제의 라운드를 지정해주세요.</li>'}</ul><p class="sub">지나간 항목 / 전체 항목 기준</p></article>`;
+  const clockCard = state.runSettings.showEventClock ? `<article class="card"><p class="eyebrow">행사 시간 · 진행자 전용</p><div class="event-clock"><div><small>${state.runtime.startedAt ? '시작 버튼 기준 경과' : '예정 시작 기준 경과'}</small><strong data-event-elapsed>${formatClock(clock.elapsed)}</strong></div><div><small>예정 종료까지</small><strong data-event-remaining>${formatClock(Math.abs(clock.remaining))}</strong></div></div><p class="sub">${esc(state.runSettings.eventDate)} · ${state.runSettings.startTime} ~ ${state.runSettings.endTime}</p><button class="btn sm" data-action="event-start">${state.runtime.startedAt ? '경과시간 다시 시작' : '지금 행사 시작'}</button></article>` : '';
+  return `${clockCard}<article class="card"><h2>라운드 내 위치</h2><ul class="round-progress">${Object.entries(roundProgress(state)).map(([round,row])=>`<li><span>${roundLabels[round]}</span><strong>${row.passed} / ${row.total}</strong></li>`).join('') || '<li>문제의 라운드를 지정해주세요.</li>'}</ul><p class="sub">현재 위치 앞에 놓인 문제 수입니다. 건너뛴 문제도 포함되며 실제 출제 완료 횟수는 아닙니다.</p></article>`;
 }
 
 function renderRunSettings() {
   const settings = state.runSettings;
-  return `<article class="card"><h2>진행 안전·시간 설정</h2><form id="run-settings-form" class="form-grid settings-form"><label class="filter-checkbox wide"><input id="run-safety" type="checkbox" ${settings.safetyLock ? 'checked' : ''}>진행 안전 잠금 (실행 중 이동 경고)</label><div class="field wide"><label for="run-date">행사 날짜</label><input id="run-date" type="date" value="${esc(settings.eventDate)}" required></div><div class="field"><label for="run-start">예정 시작</label><input id="run-start" type="time" value="${settings.startTime}" required></div><div class="field"><label for="run-end">예정 종료</label><input id="run-end" type="time" value="${settings.endTime}" required></div><button class="btn wide" type="submit">진행 설정 저장</button></form><p class="sub">종료 시각이 시작 이전이면 다음 날로 계산합니다. 긴급 화면은 안전 잠금과 관계없이 즉시 타이머를 멈춥니다.</p></article>`;
+  return `<article class="card"><h2>진행 안전·시간 설정</h2><form id="run-settings-form" class="form-grid settings-form"><label class="filter-checkbox wide"><input id="run-safety" type="checkbox" ${settings.safetyLock ? 'checked' : ''}>진행 안전 잠금 (실행 중 이동 경고)</label><label class="filter-checkbox wide"><input id="run-show-clock" type="checkbox" ${settings.showEventClock ? 'checked' : ''}>진행 화면에 행사 경과·잔여 시간 표시</label><div class="field wide"><label for="run-date">행사 날짜</label><input id="run-date" type="date" value="${esc(settings.eventDate)}" required></div><div class="field"><label for="run-start">예정 시작 (행사 시간 표시용)</label><input id="run-start" type="time" value="${settings.startTime}" required></div><div class="field"><label for="run-end">예정 종료 (행사 시간 표시용)</label><input id="run-end" type="time" value="${settings.endTime}" required></div><button class="btn wide" type="submit">진행 설정 저장</button></form><p class="sub">행사 시간 표시는 기본적으로 꺼져 있습니다. 문제 풀이 타이머는 별도로 계속 사용할 수 있습니다.</p></article>`;
 }
 
 function renderSlideSelector() {
@@ -1445,6 +1482,7 @@ function bindEvents() {
   document.getElementById('manual-timer-form')?.addEventListener('submit', event => { event.preventDefault(); setManualTimer(document.getElementById('manual-timer').value); });
   document.querySelectorAll('[data-reserve-id]').forEach(element => element.addEventListener('click', () => useReserve(element.dataset.reserveId, element.dataset.reserveMode)));
   document.querySelectorAll('[data-immediate-screen]').forEach(element => element.addEventListener('click', () => showImmediateScreen(element.dataset.immediateScreen)));
+  document.querySelectorAll('[data-question-jump]').forEach(element => element.addEventListener('click', () => jumpQuestionGroup(element.dataset.questionJump, Number(document.getElementById(`jump-${element.dataset.questionJump}`).value))));
   document.getElementById('screen-form')?.addEventListener('submit', event => { event.preventDefault(); saveScreen(); });
   document.querySelectorAll('[data-edit-screen]').forEach(element => element.addEventListener('click', () => openScreenEditor(element.dataset.editScreen)));
   document.querySelectorAll('[data-sequence-go]').forEach(element => element.addEventListener('click', () => goSequence(Number(element.dataset.sequenceGo), true)));
@@ -1663,7 +1701,7 @@ function saveRunSettings() {
   const startTime = document.getElementById('run-start').value;
   const endTime = document.getElementById('run-end').value;
   if (!validEventDate(eventDate) || !validClockTime(startTime) || !validClockTime(endTime)) return toast('유효한 행사 날짜와 시작·종료 시각을 입력해주세요.');
-  update(next => { next.runSettings = { eventDate, startTime, endTime, safetyLock: document.getElementById('run-safety').checked }; });
+  update(next => { next.runSettings = { eventDate, startTime, endTime, showEventClock: document.getElementById('run-show-clock')?.checked === true, safetyLock: document.getElementById('run-safety').checked }; });
 }
 
 function openQuestion(id = null) {

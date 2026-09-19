@@ -153,7 +153,7 @@ test('expired timer on reload is recorded once, and invalid calendar dates norma
   const h=fixture();
   h.run('startTimer(); state.timer.endAt=Date.now()-100; state.runSettings.eventDate="2026-99-99"; state=normalizeState(state); state=normalizeState(state);');
   assert.equal(h.run('state.runtime.logs.filter(row=>row.type==="timer-end").length'),1);
-  assert.equal(h.run('state.runSettings.eventDate'),'2026-10-23');
+  assert.equal(h.run('state.runSettings.eventDate'),'2026-10-30');
   assert.equal(h.run('validEventDate("2026-02-30")'),false);
 });
 
@@ -226,4 +226,38 @@ test('storage quota cannot suppress live delivery or locked projector state; rec
   const count=messages.length;
   receive({data:{type:'request-public-state',sessionId:session}});
   assert.equal(messages.length,count);
+});
+
+test('question group jumps classify special rounds first and return to exact occurrence after continuing and reloading',()=>{
+  const h=fixture();
+  h.run(`state.questions.push(migrateQuestion({id:'H',category:'hard',question:'고난도',answer:'답'}),migrateQuestion({id:'V1',category:'basic',round:'revival1',question:'부활1',answer:'답'}),migrateQuestion({id:'V2',category:'hard',round:'revival2',question:'부활2',answer:'답'}),migrateQuestion({id:'F',category:'basic',round:'final',question:'결정전',answer:'답'}));state.sequence.push(...['H','V1','V2','F'].map(questionId=>({type:'question',questionId})));goSequence(3);setManualTimer(11);`);
+  assert.deepEqual(h.json(`navigationItems('revival').map(row=>row.question.id)`),['V1','V2']);
+  assert.deepEqual(h.json(`navigationItems('hard').map(row=>row.question.id)`),['H']);
+  assert.deepEqual(h.json(`navigationItems('final').map(row=>row.question.id)`),['F']);
+  const sequence=h.json('state.sequence');
+  h.run(`jumpQuestionGroup('revival',navigationItems('revival')[0].position);handleAction('next');saveState();state=loadPrivateState();`);
+  assert.equal(h.run('currentQuestion().id'),'V2');
+  h.run('returnToPrevious();');
+  assert.equal(h.run('state.sequenceIndex'),3);
+  assert.equal(h.run('state.timer.remaining'),11);
+  assert.equal(h.run('state.timer.running'),false);
+  assert.deepEqual(h.json('state.sequence'),sequence);
+  h.run(`startTimer();before=JSON.stringify(state);confirm=()=>false;jumpQuestionGroup('final',navigationItems('final')[0].position);`);
+  assert.equal(h.run('JSON.stringify(state)'),h.run('before'));
+  h.run(`confirm=()=>true;localStorage.setItem=()=>{throw Error('quota')};jumpQuestionGroup('hard',navigationItems('hard')[0].position);`);
+  assert.equal(h.run('JSON.stringify(state)'),h.run('before'));
+});
+
+test('revised date migrates former defaults, preserves deliberate custom/blank copy, and event clock is opt-in',()=>{
+  const h=fixture();
+  h.run(`state.event.date='2026.10.23(금) 15:50~17:30';state.runSettings.eventDate='2026-10-23';state=normalizeState(state);`);
+  assert.equal(h.run('state.event.date'),'2026.10.30(금)');
+  assert.equal(h.run('state.runSettings.eventDate'),'2026-10-30');
+  assert.ok(!h.run('renderEventStatus()').includes('data-event-elapsed'));
+  h.run('state.runSettings.showEventClock=true;state=normalizeState(state);');
+  assert.ok(h.run('renderEventStatus()').includes('data-event-elapsed'));
+  for(const date of ['', '별도 행사 2026.11.01']) {
+    h.run(`state.event.date=${JSON.stringify(date)};state=normalizeState(state);`);
+    assert.equal(h.run('state.event.date'),date);
+  }
 });
