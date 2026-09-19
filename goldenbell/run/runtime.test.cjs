@@ -164,3 +164,66 @@ test('timer expiry does not rerender away settings and screen-editor drafts',()=
   h.run('state.tab="live"; startTimer(); modal={type:"screen",screen:{id:"opening"}}; renders=0; state.timer.endAt=Date.now()-10; refreshTimerDom();');
   assert.equal(h.run('renders'),0);
 });
+
+test('expiry during ticker setup leaves exactly one interval and one completion log',()=>{
+  const h=fixture();
+  h.run('activeIntervals=new Set(); intervalSerial=0; setInterval=()=>{const id=++intervalSerial;activeIntervals.add(id);return id}; clearInterval=id=>activeIntervals.delete(id); startTimer(); state.timer.endAt=Date.now()-10; syncTicker();');
+  assert.equal(h.run('activeIntervals.size'),1);
+  assert.equal(h.run('state.runtime.logs.filter(row=>row.type==="timer-end").length'),1);
+});
+
+test('safety lock cancels premature answer and running reset without changing state',()=>{
+  const h=fixture();
+  h.run('startTimer(); before=JSON.stringify(state); confirm=()=>false; toggleAnswer(); resetTimer();');
+  assert.equal(h.run('JSON.stringify(state)'),h.run('before'));
+  h.run('confirm=()=>true; toggleAnswer();');
+  assert.equal(h.run('state.answerVisible'),true);
+  assert.equal(h.run('state.timer.running'),false);
+  h.run('startTimer();');
+  assert.equal(h.run('state.timer.running'),false);
+  h.run('toggleAnswer(); startTimer(); state.runSettings.safetyLock=false; confirm=()=>false; resetTimer();');
+  assert.equal(h.run('state.timer.running'),false);
+});
+
+test('IME composition never changes slides or closes the question editor; active work warns on closing',()=>{
+  const h=fixture();
+  h.run('state.tab="live"; modal={type:"question",question:{}};');
+  for(const listener of h.listeners.keydown) listener({key:'Escape',isComposing:true});
+  assert.ok(h.run('modal'));
+  let prevented=false;
+  h.listeners.beforeunload[0]({preventDefault(){prevented=true;}});
+  assert.equal(prevented,true);
+  h.run('modal=null;');
+  h.listeners.keydown[0]({key:'ArrowRight',isComposing:true,preventDefault(){}});
+  assert.equal(h.run('state.sequenceIndex'),1);
+  prevented=false;
+  h.listeners.beforeunload[0]({preventDefault(){prevented=true;}});
+  assert.equal(prevented,false);
+});
+
+test('storage quota cannot suppress live delivery or locked projector state; reconnect is session-scoped',()=>{
+  const messages=[];
+  let receive;
+  const h=createHarness({BroadcastChannel:class {
+    postMessage(message){messages.push(structuredClone(message));}
+    addEventListener(name,callback){receive=callback;}
+  }});
+  h.run(`state.questions=[migrateQuestion({id:'Q',question:'問題',answer:'ANSWER',note:'PRIVATE'})];state.sequence=[{type:'question',questionId:'Q'}];activateSequence(state,0);toggleAnswer();`);
+  const session=h.run('getProjectorSessionId()');
+  messages.length=0;
+  h.run('localStorage.setItem=()=>{throw new Error("quota")};');
+  assert.equal(h.run('publishPublicState()'),true);
+  assert.equal(h.storage.has('sigma-goldenbell-public-v2'),false);
+  assert.equal(messages.length,1);
+  assert.ok(!JSON.stringify(messages).includes('PRIVATE'));
+  receive({data:{type:'request-public-state',sessionId:'wrong'}});
+  assert.equal(messages.length,1);
+  receive({data:{type:'request-public-state',sessionId:session}});
+  assert.equal(messages.length,2);
+  h.run('lockConsole();');
+  assert.equal(messages.at(-1).state.question,null);
+  assert.equal(messages.at(-1).state.answerVisible,false);
+  const count=messages.length;
+  receive({data:{type:'request-public-state',sessionId:session}});
+  assert.equal(messages.length,count);
+});

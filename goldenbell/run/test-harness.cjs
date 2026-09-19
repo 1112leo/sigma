@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const { webcrypto } = require('node:crypto');
 
-module.exports = function createHarness() {
+module.exports = function createHarness(options = {}) {
   const storage = new Map();
   const fields = {};
   const app = { innerHTML: '' };
@@ -10,8 +10,9 @@ module.exports = function createHarness() {
   const context = vm.createContext({
     crypto: webcrypto, URLSearchParams, structuredClone,
     location: { search: '', hash: '' },
-    window: { addEventListener(name, callback) { (listeners[name] ||= []).push(callback); } },
-    localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) },
+    BroadcastChannel: options.BroadcastChannel,
+    window: { ...(options.BroadcastChannel ? { BroadcastChannel: options.BroadcastChannel } : {}), addEventListener(name, callback) { (listeners[name] ||= []).push(callback); } },
+    localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) },
     sessionStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) },
     document: {
       activeElement: null, addEventListener() {}, getElementById: id => id === 'app' ? app : fields[id],

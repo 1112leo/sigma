@@ -59,6 +59,7 @@ const screenModeMeta = {
 let state = null;
 let publicState = null;
 let timerHandle = null;
+let syncingTicker = false;
 let completingTimer = false;
 let timerSaveRetryAt = 0;
 let modal = null;
@@ -485,14 +486,21 @@ function publishPublicState({ broadcast = true, locked = false } = {}) {
     next.answerVisible = false;
     next.screen = publicScreen(state.customScreens.find(screen => screen.id === 'waiting') || {});
   }
+  let stored = false;
+  let sent = false;
   try {
     localStorage.setItem(PUBLIC_STORAGE_KEY, JSON.stringify(next));
+    stored = true;
   } catch {
-    if (!IS_SCREEN) toast('사진 용량이 너무 커 프로젝터로 보낼 수 없습니다. 사진을 교체해주세요.');
-    return false;
+    // Never leave a previous answer in the cache after a failed screen/lock update.
+    try { localStorage.removeItem(PUBLIC_STORAGE_KEY); } catch {}
   }
-  if (broadcast) channel?.postMessage({ type: 'public-state', state: next });
-  return true;
+  // Storage and live delivery are independent: quota exhaustion must not stop a live projector.
+  if (broadcast && channel) {
+    try { channel.postMessage({ type: 'public-state', state: next }); sent = true; } catch {}
+  }
+  if (!stored && !sent && !IS_SCREEN) toast('프로젝터 화면을 갱신하지 못했습니다. 송출 화면을 확인하고 사진 용량을 줄여주세요.');
+  return stored || sent;
 }
 
 function saveState({ broadcast = true, locked = false } = {}) {
@@ -527,6 +535,7 @@ function syncPublicState(next) {
 
 channel?.addEventListener('message', event => {
   if (event.data?.type === 'public-state') syncPublicState(event.data.state);
+  if (!IS_SCREEN && state && event.data?.type === 'request-public-state' && event.data.sessionId === getProjectorSessionId()) publishPublicState();
 });
 
 window.addEventListener('storage', event => {
@@ -636,12 +645,17 @@ function refreshTimerDom() {
 }
 
 function syncTicker() {
-  const timer = IS_SCREEN ? publicState?.timer : state?.timer;
-  clearInterval(timerHandle);
-  timerHandle = null;
-  refreshTimerDom();
-  refreshEventClock();
-  if (timer?.running || (!IS_SCREEN && state)) timerHandle = setInterval(() => { refreshTimerDom(); refreshEventClock(); }, timer?.running ? 200 : 1000);
+  // Expiry saves state, which can call this function again before the outer refresh returns.
+  if (syncingTicker) return;
+  syncingTicker = true;
+  try {
+    clearInterval(timerHandle);
+    timerHandle = null;
+    refreshTimerDom();
+    refreshEventClock();
+    const timer = IS_SCREEN ? publicState?.timer : state?.timer;
+    if (timer?.running || (!IS_SCREEN && state)) timerHandle = setInterval(() => { refreshTimerDom(); refreshEventClock(); }, timer?.running ? 200 : 1000);
+  } finally { syncingTicker = false; }
 }
 
 function bytesToBase64(bytes) {
@@ -872,6 +886,7 @@ function renderLive() {
     ${question ? `<article class="card timer-card"><div class="timer-status"><span data-timer-label>${remaining <= 0 ? '시간 종료' : '남은 시간'}</span><span>${question.timeLimit}초 문제</span></div><div class="timer ${timerClass(state.timer)}" data-timer-value>${formatTime(remaining)}</div><form id="manual-timer-form" class="manual-timer"><label for="manual-timer">시간 직접 설정(초)</label><input id="manual-timer" type="number" min="0" max="600" step="1" value="${Math.ceil(remaining)}"><button class="btn sm" type="submit">적용</button></form><div class="timer-track"><div data-timer-progress></div></div><div class="timer-adjust"><button class="btn sm" data-action="timer-minus">-5초</button><button class="btn sm" data-action="reset-timer">초기화</button><button class="btn sm" data-action="timer-plus">+5초</button></div></article>` : '<article class="card note-card"><strong>안내 화면 송출 중</strong><p>문제·정답·타이머는 표시하지 않습니다. 다음 항목으로 이동해 진행하세요.</p></article>'}
     ${renderEventStatus()}
     <article class="card shortcut-card"><h2>진행 단축키</h2><div class="shortcut-list"><span><kbd>Space</kbd>타이머</span><span><kbd>A</kbd>정답 공개/숨김</span><span><kbd>←</kbd><kbd>→</kbd>항목 이동</span><span><kbd>R</kbd>타이머 초기화</span></div></article>
+    <article class="card"><h2>진행 백업</h2><p class="sub">현재 문제·사진·행사 순서·진행 위치를 함께 내려받습니다. 노트북 교체에 대비해 별도로 보관하세요.</p><button class="btn" data-action="export">현재 진행 JSON 백업</button></article>
     </aside></div>`;
 }
 
@@ -1540,7 +1555,7 @@ function lockConsole() {
   state.answerVisible = false;
   clearInterval(timerHandle);
   timerHandle = null;
-  saveState({ locked: true });
+  if (!saveState({ locked: true })) publishPublicState({ locked: true });
   sessionStorage.removeItem(AUTH_SESSION_KEY);
   state = null;
   authMessage = '';
@@ -1573,6 +1588,7 @@ function toggleAnswer() {
   const question = currentQuestion();
   if (!question) return;
   if (!question.answer) return toast('정답을 먼저 입력해주세요.');
+  if (!state.answerVisible && state.runSettings.safetyLock && state.timer.running && getTimerRemaining() > 0 && !confirm('아직 풀이 시간이 남아 있습니다. 타이머를 멈추고 정답을 공개할까요?')) return;
   update(next => {
     const opening = !next.answerVisible;
     if (opening) stopTimerIn(next);
@@ -1584,6 +1600,7 @@ function toggleAnswer() {
 function startTimer() {
   const question = currentQuestion();
   if (!question || state.timer.running) return;
+  if (state.answerVisible) return toast('정답을 숨긴 뒤 타이머를 시작해주세요.');
   update(next => {
     const remaining = getTimerRemaining(next.timer) > 0 ? getTimerRemaining(next.timer) : question.timeLimit;
     next.timer = { remaining, running: true, endAt: Date.now() + remaining * 1000 };
@@ -1602,6 +1619,7 @@ function pauseTimer() {
 function resetTimer() {
   const question = currentQuestion();
   if (!question) return;
+  if (state.runSettings.safetyLock && state.timer.running && getTimerRemaining() > 0 && !confirm('진행 중인 타이머를 멈추고 문제의 제한시간으로 초기화할까요?')) return;
   update(next => {
     next.timer = { remaining: question.timeLimit, running: false, endAt: null };
     runtimeLog(next, 'timer-reset', `${question.id} 타이머 초기화`);
@@ -1821,7 +1839,7 @@ function downloadBackup(label = '') {
 
 function exportData() {
   downloadBackup();
-  toast('백업 파일을 저장했습니다.');
+  toast('백업 다운로드를 요청했습니다. 다운로드 폴더에서 파일을 확인해주세요.');
 }
 
 function importData(event) {
@@ -1879,6 +1897,7 @@ function importData(event) {
 }
 
 window.addEventListener('keydown', event => {
+  if (event.isComposing || event.keyCode === 229) return;
   if (IS_SCREEN) {
     if (event.key.toLowerCase() === 'f') document.documentElement.requestFullscreen?.();
     return;
@@ -1896,10 +1915,16 @@ window.addEventListener('keydown', event => {
 });
 
 window.addEventListener('keydown', event => {
-  if (event.key === 'Escape' && modal) {
+  if (!event.isComposing && event.keyCode !== 229 && event.key === 'Escape' && modal) {
     modal = null;
     render();
   }
+});
+
+window.addEventListener('beforeunload', event => {
+  if (IS_SCREEN || !state || (!state.timer.running && !modal?.question && !modal?.screen && !importDraft?.busy)) return;
+  event.preventDefault();
+  event.returnValue = '';
 });
 
 document.addEventListener('fullscreenchange', () => {
@@ -1910,6 +1935,10 @@ if (IS_SCREEN) {
   publicState = loadPublicState();
   renderScreen();
   syncTicker();
+  // A newly opened projector may have missed the last broadcast or read an older cache.
+  if (SCREEN_SESSION_ID) {
+    try { channel?.postMessage({ type: 'request-public-state', sessionId: SCREEN_SESSION_ID }); } catch {}
+  }
 } else if (isUnlocked()) {
   state = loadPrivateState();
   saveState({ broadcast: false });
