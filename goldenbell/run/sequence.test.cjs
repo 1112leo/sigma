@@ -112,6 +112,34 @@ test('keyboard navigation moves sequence, A reveals, inputs/contenteditable igno
   assert.equal(h.run('state.sequenceIndex'),2);
 });
 
+test('physical A reveals with Korean layout and button focus, but never while editing', () => {
+  const h=fixture();
+  h.run('goRuntimePosition(1)');
+  const press=(extra={})=>h.listeners.keydown[0]({key:'ㅁ',code:'KeyA',preventDefault(){},...extra});
+  h.context.document.activeElement={tagName:'BUTTON'};
+  press();
+  assert.equal(h.run('state.answerVisible'),true);
+  press({isComposing:true,keyCode:229});
+  assert.equal(h.run('state.answerVisible'),false);
+  for(const tagName of ['INPUT','TEXTAREA','SELECT']) {
+    h.context.document.activeElement={tagName};
+    press({isComposing:true,keyCode:229});
+    assert.equal(h.run('state.answerVisible'),false);
+  }
+  h.context.document.activeElement={tagName:'BUTTON'};
+  press({repeat:true});
+  press({metaKey:true});
+  assert.equal(h.run('state.answerVisible'),false);
+});
+
+test('live surface keeps secondary operations collapsed and direct slide navigation available', () => {
+  const h=fixture();
+  const html=h.run('renderLive()');
+  assert.match(html, /<details class="card live-extras"><summary>/);
+  assert.match(html, /id="slide-jump"/);
+  assert.doesNotMatch(html, /overview-card|shortcut-card/);
+});
+
 test('failed sequence writes rollback position and timer', () => {
   const h=fixture();
   h.run('goSequence(1); before=JSON.stringify(state); localStorage.setItem=()=>{throw new Error("quota")}; goSequence(2);');

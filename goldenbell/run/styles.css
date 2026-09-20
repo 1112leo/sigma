@@ -317,6 +317,14 @@ button:disabled { cursor: not-allowed; }
 
 .control-rail { position: sticky; top: 14px; }
 .control-rail > .timer-card { order: -1; }
+.slide-jump { display: grid; gap: 10px; order: -2; }
+.slide-jump select { width: 100%; min-width: 0; }
+.live-extras summary, .slide-jump summary { cursor: pointer; color: var(--muted-strong); font-size: 14px; }
+.live-extras[open] > .stack { margin-top: 16px; }
+.slide-jump details > .card { padding: 14px 0 0; border: 0; background: none; box-shadow: none; }
+.slide-jump .question-navigation { grid-template-columns: 1fr; }
+.slide-jump .section-head { flex-wrap: wrap; }
+.mode-card .eyebrow, .mode-help { display: none; }
 .question-navigation { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .question-navigation .field { min-width: 0; }
 .question-navigation select { width: 100%; min-width: 0; }
@@ -550,6 +558,10 @@ kbd { min-width: 23px; padding: 3px 6px; border: 1px solid #536985; border-botto
   .control-rail { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
   .shortcut-card { grid-column: 1 / -1; }
   .q-list { max-height: none; }
+}
+@media (min-width: 900px) and (max-width: 1120px) {
+  .live-layout { grid-template-columns: minmax(0, 1fr) 280px; }
+  .control-rail { display: flex; align-items: stretch; }
 }
 
 @media (max-width: 720px) {

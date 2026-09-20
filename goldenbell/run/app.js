@@ -903,22 +903,16 @@ function renderLive() {
   const total = liveSequence.length;
   const position = total ? cursor + 1 : 0;
   const remaining = getTimerRemaining(state.timer);
-  const progress = total ? position / total * 100 : 0;
-  const title = sequenceItemLabel(activeItem(state));
   return `<div class="live-layout"><section class="stack">
     <article class="card stage-card"><div class="section-head stage-heading"><div><p class="eyebrow">프로젝터 미리보기 · ${position} / ${total}</p><h2>${esc(question ? question.title : currentScreen().title)}</h2></div><button class="btn sm" data-action="open-screen">새 창으로 열기</button></div>
     <div class="stage-preview" aria-label="프로젝터 화면 미리보기">${renderPreview()}</div>
     ${question ? `<div class="primary-controls"><button class="btn timer-toggle" data-action="timer-toggle"><span>${state.timer.running ? '타이머 일시정지' : '타이머 시작'}</span><kbd>Space</kbd></button><button class="btn presentation-next" data-action="toggle-answer" ${question.answer ? '' : 'disabled'}><span>${state.answerVisible ? '정답 숨기기' : '정답 공개'}</span><kbd>A</kbd></button></div>` : ''}
     <div class="transport-controls sequence-transport"><button class="btn" data-action="prev" ${cursor <= 0 ? 'disabled' : ''}>← 이전 항목</button><button class="btn primary" data-action="next" ${cursor >= total - 1 ? 'disabled' : ''}>다음 항목 →</button></div>
     ${question ? '<div class="row"><button class="btn sm ghost" data-action="reset-timer">시간 초기화 (R)</button><button class="btn sm ghost" data-action="edit-current">현재 문제 수정</button></div>' : ''}</article>
-    ${renderQuestionNavigation()}
-    ${renderRuntimeControls()}
+    <details class="card live-extras"><summary>추가 운영 도구 · 예비문제 / 백업 / 기록</summary><div class="stack">${renderRuntimeControls()}${renderEventStatus()}<button class="btn" data-action="export">현재 진행 JSON 백업</button></div></details>
     </section><aside class="stack control-rail">${renderSlideSelector()}
-    <article class="card overview-card"><p class="eyebrow">행사 진행</p><div class="section-head"><h2>${esc(currentRoundLabel())}</h2><strong>${position} / ${total}</strong></div><div class="progress"><div style="width:${progress}%"></div></div><p class="sub">현재 · ${esc(title)}</p><div class="next-item"><small>다음 항목</small><strong>${esc(sequenceItemLabel(liveSequence[cursor + 1]))}</strong></div></article>
+    <article class="card slide-jump"><h2>이동</h2><label for="slide-jump">전체 슬라이드</label><select id="slide-jump">${liveSequence.map((item,index)=>`<option value="${index}" ${index === cursor ? 'selected' : ''}>${index+1}. ${esc(sequenceItemLabel(item))}</option>`).join('')}</select><button class="btn" data-action="slide-jump" ${total ? '' : 'disabled'}>선택한 슬라이드로 이동</button><button class="btn ghost" data-action="runtime-return" ${state.runtime.returns.length ? '' : 'disabled'}>이동 전 화면으로 복귀</button><details><summary>일반 / 고난도 / 패자부활 / 등수결정</summary>${renderQuestionNavigation()}</details></article>
     ${question ? `<article class="card timer-card"><div class="timer-status"><span data-timer-label>${remaining <= 0 ? '시간 종료' : '남은 시간'}</span><span>${question.timeLimit}초 문제</span></div><div class="timer ${timerClass(state.timer)}" data-timer-value>${formatTime(remaining)}</div><form id="manual-timer-form" class="manual-timer"><label for="manual-timer">시간 직접 설정(초)</label><input id="manual-timer" type="number" min="0" max="600" step="1" value="${Math.ceil(remaining)}"><button class="btn sm" type="submit">적용</button></form><div class="timer-track"><div data-timer-progress></div></div><div class="timer-adjust"><button class="btn sm" data-action="timer-minus">-5초</button><button class="btn sm" data-action="reset-timer">초기화</button><button class="btn sm" data-action="timer-plus">+5초</button></div></article>` : '<article class="card note-card"><strong>안내 화면 송출 중</strong><p>문제·정답·타이머는 표시하지 않습니다. 다음 항목으로 이동해 진행하세요.</p></article>'}
-    ${renderEventStatus()}
-    <article class="card shortcut-card"><h2>진행 단축키</h2><div class="shortcut-list"><span><kbd>Space</kbd>타이머</span><span><kbd>A</kbd>정답 공개/숨김</span><span><kbd>←</kbd><kbd>→</kbd>항목 이동</span><span><kbd>R</kbd>타이머 초기화</span></div></article>
-    <article class="card"><h2>진행 백업</h2><p class="sub">현재 문제·사진·행사 순서·진행 위치를 함께 내려받습니다. 노트북 교체에 대비해 별도로 보관하세요.</p><button class="btn" data-action="export">현재 진행 JSON 백업</button></article>
     </aside></div>`;
 }
 
@@ -1550,6 +1544,7 @@ function handleAction(action) {
   if (action === 'runtime-return') return returnToPrevious();
   if (action === 'runtime-clear') return clearInterventions();
   if (action === 'runtime-jump') return goRuntimePosition(Number(document.getElementById('runtime-jump').value), true);
+  if (action === 'slide-jump') return goRuntimePosition(Number(document.getElementById('slide-jump').value), true);
   if (action === 'invalid-question' && question && confirm(`${question.id} 문제를 이번 진행에서 무효로 표시할까요? 원본 문제는 유지됩니다.`)) return showImmediateScreen('invalid-question', true);
   if (action === 'clear-logs' && confirm('진행 로그를 초기화할까요? 예비문제 사용 기록과 무효 표시는 유지됩니다.')) return update(next => { next.runtime.logs = []; });
   if (action === 'event-start' && (!state.runtime.startedAt || confirm('행사 경과시간을 지금부터 다시 측정할까요?'))) return update(next => { next.runtime.startedAt = new Date().toISOString(); runtimeLog(next, 'event-start', '행사 시간 측정 시작'); });
@@ -1959,19 +1954,21 @@ function importData(event) {
 }
 
 window.addEventListener('keydown', event => {
-  if (event.isComposing || event.keyCode === 229) return;
+  const editing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
+  if (editing || ((event.isComposing || event.keyCode === 229) && !['KeyA', 'KeyR'].includes(event.code))) return;
   if (IS_SCREEN) {
     if (event.key.toLowerCase() === 'f') document.documentElement.requestFullscreen?.();
     return;
   }
   if (!state || state.tab !== 'live' || modal || event.repeat) return;
-  if (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable || event.ctrlKey || event.metaKey || event.altKey) return;
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
   if (event.code === 'Space') {
+    if (['BUTTON', 'SUMMARY', 'A'].includes(document.activeElement?.tagName)) return;
     event.preventDefault();
     state.timer.running ? pauseTimer() : startTimer();
   }
-  if (event.key.toLowerCase() === 'a') toggleAnswer();
-  if (event.key.toLowerCase() === 'r') resetTimer();
+  if (event.code === 'KeyA' || event.key.toLowerCase() === 'a') { event.preventDefault(); toggleAnswer(); }
+  if (event.code === 'KeyR' || event.key.toLowerCase() === 'r') { event.preventDefault(); resetTimer(); }
   if (event.key === 'ArrowLeft') { event.preventDefault(); goRuntimePosition(runtimePosition(state) - 1); }
   if (event.key === 'ArrowRight') { event.preventDefault(); advancePresentation(); }
 });
