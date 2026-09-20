@@ -132,12 +132,29 @@ test('physical A reveals with Korean layout and button focus, but never while ed
   assert.equal(h.run('state.answerVisible'),false);
 });
 
-test('live surface keeps secondary operations collapsed and direct slide navigation available', () => {
+test('live surface exposes modes and configured navigation without temporary operations', () => {
   const h=fixture();
   const html=h.run('renderLive()');
-  assert.match(html, /<details class="card live-extras"><summary>/);
+  for(const group of ['basic','hard','revival','final']) assert.match(html, new RegExp(`data-group-mode="${group}"`));
+  assert.doesNotMatch(html, /runtime-return|runtime-clear|reserve-picker|data-immediate-screen/);
   assert.match(html, /id="slide-jump"/);
   assert.doesNotMatch(html, /overview-card|shortcut-card/);
+});
+
+test('screen mode then next follows the selected screen in the configured sequence', () => {
+  const h=fixture();
+  h.run(`state.sequence.splice(1,0,{type:'screen',screenId:'rules'});goSequence(5);setScreenMode('rules');`);
+  assert.equal(h.run('state.sequenceIndex'),1);
+  assert.equal(h.run('state.runtime.overlay'),null);
+  assert.equal(h.run('state.runtime.returns.length'),0);
+  h.run(`advancePresentation();`);
+  assert.equal(h.run('state.sequenceIndex'),2);
+  assert.equal(h.run('currentQuestion().id'),'Q1');
+  h.run(`jumpGroupMode('revival');`);
+  assert.equal(h.run('currentQuestion().id'),'Q2');
+  assert.equal(h.run('state.runtime.returns.length'),0);
+  h.run(`advancePresentation();`);
+  assert.equal(h.run('activeItem(state).screenId'),'judging');
 });
 
 test('failed sequence writes rollback position and timer', () => {

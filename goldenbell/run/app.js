@@ -909,9 +909,9 @@ function renderLive() {
     ${question ? `<div class="primary-controls"><button class="btn timer-toggle" data-action="timer-toggle"><span>${state.timer.running ? '타이머 일시정지' : '타이머 시작'}</span><kbd>Space</kbd></button><button class="btn presentation-next" data-action="toggle-answer" ${question.answer ? '' : 'disabled'}><span>${state.answerVisible ? '정답 숨기기' : '정답 공개'}</span><kbd>A</kbd></button></div>` : ''}
     <div class="transport-controls sequence-transport"><button class="btn" data-action="prev" ${cursor <= 0 ? 'disabled' : ''}>← 이전 항목</button><button class="btn primary" data-action="next" ${cursor >= total - 1 ? 'disabled' : ''}>다음 항목 →</button></div>
     ${question ? '<div class="row"><button class="btn sm ghost" data-action="reset-timer">시간 초기화 (R)</button><button class="btn sm ghost" data-action="edit-current">현재 문제 수정</button></div>' : ''}</article>
-    <details class="card live-extras"><summary>추가 운영 도구 · 예비문제 / 백업 / 기록</summary><div class="stack">${renderRuntimeControls()}${renderEventStatus()}<button class="btn" data-action="export">현재 진행 JSON 백업</button></div></details>
+    <button class="btn sm ghost" data-action="export">JSON 백업</button>
     </section><aside class="stack control-rail">${renderSlideSelector()}
-    <article class="card slide-jump"><h2>이동</h2><label for="slide-jump">전체 슬라이드</label><select id="slide-jump">${liveSequence.map((item,index)=>`<option value="${index}" ${index === cursor ? 'selected' : ''}>${index+1}. ${esc(sequenceItemLabel(item))}</option>`).join('')}</select><button class="btn" data-action="slide-jump" ${total ? '' : 'disabled'}>선택한 슬라이드로 이동</button><button class="btn ghost" data-action="runtime-return" ${state.runtime.returns.length ? '' : 'disabled'}>이동 전 화면으로 복귀</button><details><summary>일반 / 고난도 / 패자부활 / 등수결정</summary>${renderQuestionNavigation()}</details></article>
+    <article class="card slide-jump"><h2>슬라이드 이동</h2><label for="slide-jump">행사 구성 순서</label><select id="slide-jump">${liveSequence.map((item,index)=>`<option value="${index}" ${index === cursor ? 'selected' : ''}>${index+1}. ${esc(sequenceItemLabel(item))}</option>`).join('')}</select><button class="btn" data-action="slide-jump" ${total ? '' : 'disabled'}>선택한 슬라이드로 이동</button></article>
     ${question ? `<article class="card timer-card"><div class="timer-status"><span data-timer-label>${remaining <= 0 ? '시간 종료' : '남은 시간'}</span><span>${question.timeLimit}초 문제</span></div><div class="timer ${timerClass(state.timer)}" data-timer-value>${formatTime(remaining)}</div><form id="manual-timer-form" class="manual-timer"><label for="manual-timer">시간 직접 설정(초)</label><input id="manual-timer" type="number" min="0" max="600" step="1" value="${Math.ceil(remaining)}"><button class="btn sm" type="submit">적용</button></form><div class="timer-track"><div data-timer-progress></div></div><div class="timer-adjust"><button class="btn sm" data-action="timer-minus">-5초</button><button class="btn sm" data-action="reset-timer">초기화</button><button class="btn sm" data-action="timer-plus">+5초</button></div></article>` : '<article class="card note-card"><strong>안내 화면 송출 중</strong><p>문제·정답·타이머는 표시하지 않습니다. 다음 항목으로 이동해 진행하세요.</p></article>'}
     </aside></div>`;
 }
@@ -935,7 +935,7 @@ function navigationItems(group) {
 function jumpQuestionGroup(group, position) {
   if (!navigationItems(group).some(row => row.position === position)) return toast('행사 구성에 해당 문제를 먼저 추가해주세요.');
   if (!state.runtime.overlay && runtimePosition(state) === position) return toast('현재 진행 중인 문제입니다.');
-  return goRuntimePosition(position, true);
+  return goRuntimePosition(position);
 }
 
 function renderQuestionNavigation() {
@@ -980,8 +980,23 @@ function renderRunSettings() {
 }
 
 function renderSlideSelector() {
-  const active = publicScreen(currentScreen()).template;
-  return `<article class="card mode-card"><div class="section-head"><div><p class="eyebrow">PPT 대신 송출</p><h2>슬라이드 선택</h2></div></div><div class="mode-grid">${Object.entries(legacyScreenIds).map(([mode,id]) => `<button class="mode-button ${state.displayMode === 'screen' && active === mode ? 'active' : ''}" data-immediate-screen="${id}" aria-pressed="${state.displayMode === 'screen' && active === mode}"><span class="mode-dot"></span>${esc(screenModeMeta[mode].shortLabel)}</button>`).join('')}<button class="mode-button" data-action="runtime-return" ${state.runtime.returns.length ? '' : 'disabled'}><span class="mode-dot"></span>직전 화면 복귀</button></div><p class="sub mode-help">대기·오프닝·안내·휴식·마침을 바로 송출하고, 진행하던 화면으로 복귀할 수 있습니다.</p></article>`;
+  const active = activeItem(state);
+  const question = currentQuestion();
+  return `<article class="card mode-card"><h2>모드 변경</h2><div class="mode-grid">${Object.entries(navigationGroups).map(([group,label]) => {
+    const selected = question && questionNavigationGroup(question) === group;
+    return `<button class="mode-button ${selected ? 'active' : ''}" data-group-mode="${group}" aria-pressed="${Boolean(selected)}" ${navigationItems(group).length ? '' : 'disabled'}>${label}</button>`;
+  }).join('')}</div><div class="mode-grid screen-modes">${Object.entries(legacyScreenIds).map(([mode,id]) => {
+    const selected = active?.type === 'screen' && active.screenId === id;
+    const available = state.sequence.some(item => item.type === 'screen' && item.screenId === id);
+    return `<button class="mode-button ${selected ? 'active' : ''}" data-screen-mode="${mode}" aria-pressed="${selected}" ${available ? '' : 'disabled'}>${esc(screenModeMeta[mode].shortLabel)}</button>`;
+  }).join('')}</div><p class="sub">선택한 위치부터 행사 구성 순서대로 진행합니다.</p></article>`;
+}
+
+function jumpGroupMode(group) {
+  const items = navigationItems(group);
+  if (!items.length) return toast('행사 구성에 해당 문제를 먼저 추가해주세요.');
+  if (currentQuestion() && questionNavigationGroup(currentQuestion()) === group) return;
+  jumpQuestionGroup(group, items[0].position);
 }
 
 function screenTheme(screen, preview = false) {
@@ -1500,6 +1515,8 @@ function bindEvents() {
   document.getElementById('manual-timer-form')?.addEventListener('submit', event => { event.preventDefault(); setManualTimer(document.getElementById('manual-timer').value); });
   document.querySelectorAll('[data-reserve-id]').forEach(element => element.addEventListener('click', () => useReserve(element.dataset.reserveId, element.dataset.reserveMode)));
   document.querySelectorAll('[data-immediate-screen]').forEach(element => element.addEventListener('click', () => showImmediateScreen(element.dataset.immediateScreen)));
+  document.querySelectorAll('[data-screen-mode]').forEach(element => element.addEventListener('click', () => setScreenMode(element.dataset.screenMode)));
+  document.querySelectorAll('[data-group-mode]').forEach(element => element.addEventListener('click', () => jumpGroupMode(element.dataset.groupMode)));
   document.querySelectorAll('[data-question-jump]').forEach(element => element.addEventListener('click', () => jumpQuestionGroup(element.dataset.questionJump, Number(document.getElementById(`jump-${element.dataset.questionJump}`).value))));
   document.getElementById('screen-form')?.addEventListener('submit', event => { event.preventDefault(); saveScreen(); });
   document.querySelectorAll('[data-edit-screen]').forEach(element => element.addEventListener('click', () => openScreenEditor(element.dataset.editScreen)));
@@ -1544,7 +1561,7 @@ function handleAction(action) {
   if (action === 'runtime-return') return returnToPrevious();
   if (action === 'runtime-clear') return clearInterventions();
   if (action === 'runtime-jump') return goRuntimePosition(Number(document.getElementById('runtime-jump').value), true);
-  if (action === 'slide-jump') return goRuntimePosition(Number(document.getElementById('slide-jump').value), true);
+  if (action === 'slide-jump') return goRuntimePosition(Number(document.getElementById('slide-jump').value));
   if (action === 'invalid-question' && question && confirm(`${question.id} 문제를 이번 진행에서 무효로 표시할까요? 원본 문제는 유지됩니다.`)) return showImmediateScreen('invalid-question', true);
   if (action === 'clear-logs' && confirm('진행 로그를 초기화할까요? 예비문제 사용 기록과 무효 표시는 유지됩니다.')) return update(next => { next.runtime.logs = []; });
   if (action === 'event-start' && (!state.runtime.startedAt || confirm('행사 경과시간을 지금부터 다시 측정할까요?'))) return update(next => { next.runtime.startedAt = new Date().toISOString(); runtimeLog(next, 'event-start', '행사 시간 측정 시작'); });

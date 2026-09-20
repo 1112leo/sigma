@@ -228,7 +228,7 @@ test('storage quota cannot suppress live delivery or locked projector state; rec
   assert.equal(messages.length,count);
 });
 
-test('question group jumps classify special rounds first and return to exact occurrence after continuing and reloading',()=>{
+test('question group jumps follow configured order after continuing and reloading without return frames',()=>{
   const h=fixture();
   h.run(`state.questions.push(migrateQuestion({id:'H',category:'hard',question:'고난도',answer:'답'}),migrateQuestion({id:'V1',category:'basic',round:'revival1',question:'부활1',answer:'답'}),migrateQuestion({id:'V2',category:'hard',round:'revival2',question:'부활2',answer:'답'}),migrateQuestion({id:'F',category:'basic',round:'final',question:'결정전',answer:'답'}));state.sequence.push(...['H','V1','V2','F'].map(questionId=>({type:'question',questionId})));goSequence(3);setManualTimer(11);`);
   assert.deepEqual(h.json(`navigationItems('revival').map(row=>row.question.id)`),['V1','V2']);
@@ -237,9 +237,8 @@ test('question group jumps classify special rounds first and return to exact occ
   const sequence=h.json('state.sequence');
   h.run(`jumpQuestionGroup('revival',navigationItems('revival')[0].position);handleAction('next');saveState();state=loadPrivateState();`);
   assert.equal(h.run('currentQuestion().id'),'V2');
-  h.run('returnToPrevious();');
-  assert.equal(h.run('state.sequenceIndex'),3);
-  assert.equal(h.run('state.timer.remaining'),11);
+  assert.equal(h.run('state.runtime.returns.length'),0);
+  assert.equal(h.run('state.runtime.overlay'),null);
   assert.equal(h.run('state.timer.running'),false);
   assert.deepEqual(h.json('state.sequence'),sequence);
   h.run(`startTimer();before=JSON.stringify(state);confirm=()=>false;jumpQuestionGroup('final',navigationItems('final')[0].position);`);

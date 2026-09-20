@@ -45,5 +45,6 @@ test('custom content, styles and safety-preserving quick slide controls remain a
   h.run(`showImmediateScreen('opening')`);
   assert.deepEqual(h.json('state.sequence'),before);
   assert.match(h.run('renderLive()'), /mode-card/);
-  assert.match(h.run('renderLive()'), /data-action="runtime-return"/);
+  assert.match(h.run('renderLive()'), /data-screen-mode="rules"/);
+  assert.doesNotMatch(h.run('renderLive()'), /data-action="runtime-return"|data-immediate-screen|임시 진행/);
 });
