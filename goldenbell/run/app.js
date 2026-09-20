@@ -208,7 +208,7 @@ function normalizePresentation(raw, next) {
     next.sequenceIndex = Math.max(0, position);
   } else next.sequenceIndex = next.sequence.length ? Math.round(clampNumber(raw.sequenceIndex, 0, next.sequence.length - 1, 0)) : -1;
   next.runtime = normalizeRuntime(raw.runtime, next.sequence.length);
-  next.runSettings = { safetyLock: raw.runSettings?.safetyLock !== false, showEventClock: raw.runSettings?.showEventClock === true, eventDate: validEventDate(raw.runSettings?.eventDate) && raw.runSettings.eventDate !== '2026-10-23' ? raw.runSettings.eventDate : '2026-10-30', startTime: validClockTime(raw.runSettings?.startTime) ? raw.runSettings.startTime : '15:50', endTime: validClockTime(raw.runSettings?.endTime) ? raw.runSettings.endTime : '17:30' };
+  next.runSettings = { safetyLock: true, showEventClock: raw.runSettings?.showEventClock === true, eventDate: validEventDate(raw.runSettings?.eventDate) && raw.runSettings.eventDate !== '2026-10-23' ? raw.runSettings.eventDate : '2026-10-30', startTime: validClockTime(raw.runSettings?.startTime) ? raw.runSettings.startTime : '15:50', endTime: validClockTime(raw.runSettings?.endTime) ? raw.runSettings.endTime : '17:30' };
   if (/^2026\.10\.23\(금\)(?: 15:50~17:30)?$/.test(next.event.date)) next.event.date = '2026.10.30(금)';
   const item = activeItem(next);
   const index = item?.type === 'question' ? next.questions.findIndex(question => question.id === item.questionId) : -1;
@@ -953,7 +953,7 @@ function renderQuestionNavigation() {
 function renderRuntimeControls() {
   const question = currentQuestion();
   const invalid = question && state.runtime.invalidQuestions.some(row => row.questionId === question.id);
-  return `<article class="card runtime-card"><div class="section-head"><div><p class="eyebrow">운영자 전용 · 원본 구성 유지</p><h2>돌발상황 대응</h2></div><span class="badge ${state.runSettings.safetyLock ? 'green' : ''}">진행 안전 잠금 ${state.runSettings.safetyLock ? 'ON' : 'OFF'}</span></div>
+  return `<article class="card runtime-card"><div class="section-head"><div><p class="eyebrow">운영자 전용 · 원본 구성 유지</p><h2>돌발상황 대응</h2></div><span class="badge green">진행 안전 확인 항상 적용</span></div>
     ${state.runtime.overlay ? '<p class="overflow-notice">즉시 송출 중 · 복귀하거나 다음 항목으로 이동할 수 있습니다.</p>' : ''}
     ${invalid ? '<p class="overflow-notice">이번 진행에서 무효 처리한 문제입니다. 원본은 유지됩니다.</p>' : ''}
     <div class="runtime-buttons">${[['judging','판정 중'],['standby','잠시 대기'],['invalid-question','문제 무효 안내'],['technical','기술 문제 발생']].map(([id,label])=>`<button class="btn" data-immediate-screen="${id}">${label}</button>`).join('')}
@@ -976,7 +976,7 @@ function renderEventStatus() {
 
 function renderRunSettings() {
   const settings = state.runSettings;
-  return `<article class="card"><h2>진행 안전·시간 설정</h2><form id="run-settings-form" class="form-grid settings-form"><label class="filter-checkbox wide"><input id="run-safety" type="checkbox" ${settings.safetyLock ? 'checked' : ''}>진행 안전 잠금 (실행 중 이동 경고)</label><label class="filter-checkbox wide"><input id="run-show-clock" type="checkbox" ${settings.showEventClock ? 'checked' : ''}>진행 화면에 행사 경과·잔여 시간 표시</label><div class="field wide"><label for="run-date">행사 날짜</label><input id="run-date" type="date" value="${esc(settings.eventDate)}" required></div><div class="field"><label for="run-start">예정 시작 (행사 시간 표시용)</label><input id="run-start" type="time" value="${settings.startTime}" required></div><div class="field"><label for="run-end">예정 종료 (행사 시간 표시용)</label><input id="run-end" type="time" value="${settings.endTime}" required></div><button class="btn wide" type="submit">진행 설정 저장</button></form><p class="sub">행사 시간 표시는 기본적으로 꺼져 있습니다. 문제 풀이 타이머는 별도로 계속 사용할 수 있습니다.</p></article>`;
+  return `<article class="card"><h2>진행 안전·시간 설정</h2><form id="run-settings-form" class="form-grid settings-form"><p class="sub wide">진행 중 이동·정답 공개·시간 초기화 전에는 항상 확인합니다.</p><label class="filter-checkbox wide"><input id="run-show-clock" type="checkbox" ${settings.showEventClock ? 'checked' : ''}>진행 화면에 행사 경과·잔여 시간 표시</label><div class="field wide"><label for="run-date">행사 날짜</label><input id="run-date" type="date" value="${esc(settings.eventDate)}" required></div><div class="field"><label for="run-start">예정 시작 (행사 시간 표시용)</label><input id="run-start" type="time" value="${settings.startTime}" required></div><div class="field"><label for="run-end">예정 종료 (행사 시간 표시용)</label><input id="run-end" type="time" value="${settings.endTime}" required></div><button class="btn wide" type="submit">진행 설정 저장</button></form><p class="sub">행사 시간 표시는 기본적으로 꺼져 있습니다. 문제 풀이 타이머는 별도로 계속 사용할 수 있습니다.</p></article>`;
 }
 
 function renderSlideSelector() {
@@ -1045,7 +1045,7 @@ function activateCurrentItem(next) {
 }
 
 function mayNavigate() {
-  return !state.runSettings.safetyLock || !state.timer.running || getTimerRemaining(state.timer) <= 0 || confirm('타이머가 실행 중입니다. 시간을 멈추고 이동할까요?');
+  return !state.timer.running || getTimerRemaining(state.timer) <= 0 || confirm('타이머가 실행 중입니다. 시간을 멈추고 이동할까요?');
 }
 
 function logCurrentItem(next) {
@@ -1662,7 +1662,7 @@ function toggleAnswer() {
   const question = currentQuestion();
   if (!question) return;
   if (!question.answer) return toast('정답을 먼저 입력해주세요.');
-  if (!state.answerVisible && state.runSettings.safetyLock && state.timer.running && getTimerRemaining() > 0 && !confirm('아직 풀이 시간이 남아 있습니다. 타이머를 멈추고 정답을 공개할까요?')) return;
+  if (!state.answerVisible && state.timer.running && getTimerRemaining() > 0 && !confirm('아직 풀이 시간이 남아 있습니다. 타이머를 멈추고 정답을 공개할까요?')) return;
   update(next => {
     const opening = !next.answerVisible;
     if (opening) stopTimerIn(next);
@@ -1693,7 +1693,7 @@ function pauseTimer() {
 function resetTimer() {
   const question = currentQuestion();
   if (!question) return;
-  if (state.runSettings.safetyLock && state.timer.running && getTimerRemaining() > 0 && !confirm('진행 중인 타이머를 멈추고 문제의 제한시간으로 초기화할까요?')) return;
+  if (state.timer.running && getTimerRemaining() > 0 && !confirm('진행 중인 타이머를 멈추고 문제의 제한시간으로 초기화할까요?')) return;
   update(next => {
     next.timer = { remaining: question.timeLimit, running: false, endAt: null };
     runtimeLog(next, 'timer-reset', `${question.id} 타이머 초기화`);
@@ -1737,7 +1737,7 @@ function saveRunSettings() {
   const startTime = document.getElementById('run-start').value;
   const endTime = document.getElementById('run-end').value;
   if (!validEventDate(eventDate) || !validClockTime(startTime) || !validClockTime(endTime)) return toast('유효한 행사 날짜와 시작·종료 시각을 입력해주세요.');
-  update(next => { next.runSettings = { eventDate, startTime, endTime, showEventClock: document.getElementById('run-show-clock')?.checked === true, safetyLock: document.getElementById('run-safety').checked }; });
+  update(next => { next.runSettings = { eventDate, startTime, endTime, showEventClock: document.getElementById('run-show-clock')?.checked === true, safetyLock: true }; });
 }
 
 function openQuestion(id = null) {

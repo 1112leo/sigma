@@ -60,6 +60,8 @@ test('jump return restores duplicate occurrence and safety ON cancel is atomic',
   h.run('startTimer(); before=JSON.stringify(state); confirm=()=>false; handleAction("next");');
   assert.equal(h.run('JSON.stringify(state)'),h.run('before'));
   h.run('state.runSettings.safetyLock=false; handleAction("next");');
+  assert.equal(h.run('state.sequenceIndex'),3);
+  h.run('confirm=()=>true; handleAction("next");');
   assert.equal(h.run('state.sequenceIndex'),4);
   assert.equal(h.run('state.timer.running'),false);
 });
@@ -182,7 +184,19 @@ test('safety lock cancels premature answer and running reset without changing st
   h.run('startTimer();');
   assert.equal(h.run('state.timer.running'),false);
   h.run('toggleAnswer(); startTimer(); state.runSettings.safetyLock=false; confirm=()=>false; resetTimer();');
-  assert.equal(h.run('state.timer.running'),false);
+  assert.equal(h.run('state.timer.running'),true);
+  h.run('toggleAnswer();');
+  assert.equal(h.run('state.answerVisible'),false);
+});
+
+test('legacy safety OFF normalizes to mandatory safety and settings have no toggle',()=>{
+  const h=fixture();
+  h.run('state.runSettings.safetyLock=false; state=normalizeState(state);');
+  assert.equal(h.run('state.runSettings.safetyLock'),true);
+  assert.doesNotMatch(h.run('renderRunSettings()'), /id="run-safety"/);
+  for(const [id,value] of Object.entries({'run-date':'2026-10-30','run-start':'15:50','run-end':'17:30'})) h.fields[id]={value};
+  h.run('saveRunSettings();state=loadPrivateState();');
+  assert.equal(h.run('state.runSettings.safetyLock'),true);
 });
 
 test('IME composition never changes slides or closes the question editor; active work warns on closing',()=>{
