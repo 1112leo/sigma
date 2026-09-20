@@ -614,15 +614,15 @@ function refreshTimerDom() {
   const timer = IS_SCREEN ? publicState?.timer : state?.timer;
   if (!timer) return;
   const remaining = getTimerRemaining(timer);
-  document.querySelectorAll('[data-timer-value]').forEach(element => {
+  timerElements('[data-timer-value]').forEach(element => {
     element.textContent = formatTime(remaining);
     element.classList.toggle('danger', remaining > 0 && remaining <= 5);
     element.classList.toggle('expired', remaining <= 0);
   });
-  document.querySelectorAll('[data-timer-label]').forEach(element => {
+  timerElements('[data-timer-label]').forEach(element => {
     element.textContent = remaining <= 0 ? '시간 종료' : '남은 시간';
   });
-  document.querySelectorAll('[data-timer-progress]').forEach(element => {
+  timerElements('[data-timer-progress]').forEach(element => {
     const total = IS_SCREEN ? publicState?.question?.seconds : currentQuestion()?.seconds;
     const percent = total ? Math.max(0, Math.min(100, (remaining / total) * 100)) : 0;
     element.style.width = `${percent}%`;
@@ -816,6 +816,7 @@ function render() {
     ${modal ? renderModal() : ''}
     <div class="sr-only" aria-live="polite" id="live-region"></div>`;
   bindEvents();
+  fitPresentationFrame();
   if (modal) focusModal();
   refreshTimerDom();
   refreshEventClock();
@@ -829,29 +830,36 @@ function renderTab() {
   return renderLive();
 }
 
+function presentationFrame(payload) {
+  const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="./vendor/katex/katex.min.css"><link rel="stylesheet" href="./styles.css?v=20260920-matched"><style>html,body{margin:0;overflow:hidden}</style></head><body>${renderScreenMarkup(payload)}</body></html>`;
+  return `<iframe class="presentation-frame" title="프레젠테이션 화면" sandbox="allow-same-origin" tabindex="-1" srcdoc="${esc(html)}"></iframe>`;
+}
+
 function renderPreview() {
-  const question = currentQuestion();
-  const mode = state.displayMode;
-  if (mode === 'screen') return renderScreenContent(currentScreen(), true);
-  if (mode === 'rules') {
-    const rules = state.messages.rules.split(/\r?\n/).filter(Boolean).slice(0, 6).map(rule => safeText(rule, 180));
-    return `<div class="preview-scene preview-rules"><p>HOW TO PLAY</p><strong>진행 안내</strong><ol>${rules.map(rule => `<li>${esc(rule)}</li>`).join('')}</ol></div>`;
+  return presentationFrame(buildPublicState());
+}
+
+let presentationObserver = null;
+function fitPresentationFrame() {
+  presentationObserver?.disconnect();
+  const frame = document.querySelector('.presentation-frame');
+  if (!frame) return;
+  const fit = () => {
+    const host = frame.parentElement;
+    const scale = Math.min(host.clientWidth / 1280, host.clientHeight / 720);
+    frame.style.transform = `translate(-50%, -50%) scale(${scale})`;
+  };
+  fit();
+  frame.addEventListener('load', () => { fit(); refreshTimerDom(); });
+  if (typeof ResizeObserver !== 'undefined') {
+    presentationObserver = new ResizeObserver(fit);
+    presentationObserver.observe(frame.parentElement);
   }
-  if (mode !== 'question') {
-    const copy = state.messages[mode] ?? state.messages.lobby;
-    const kicker = mode === 'lobby' ? 'SIGMA GOLDEN BELL' : mode === 'opening' ? 'LET\'S BEGIN' : mode === 'break' ? 'BREAK TIME' : 'THANK YOU';
-    return `<div class="preview-scene preview-${mode}"><div class="preview-watermark" aria-hidden="true">Σ</div><p>${esc(kicker)}</p><strong>${esc(copy)}</strong><span>${esc(state.messages.tagline)}</span></div>`;
-  }
-  if (!question) return `<div class="preview-scene"><strong>문제를 준비 중입니다.</strong></div>`;
-  const meta = categoryMeta[question.category] || categoryMeta.basic;
-  const image = safeImage(question.image);
-  return `
-    <div class="preview-question-scene ${state.answerVisible ? 'show-answer' : ''}">
-      <div class="preview-topline"><span>${esc(meta.label)}</span><span>${questionProgress().current} / ${questionProgress().total}</span></div>
-      <div class="preview-question-content ${image ? 'has-image' : ''}">${image ? `<img class="preview-question-image" src="${image}" alt="${esc(question.imageAlt || '문제 참고 이미지')}">` : ''}<div class="preview-question ${questionSizeClass(projectionText(question.question, 600))}">${richText(projectionText(question.question, 600) || '문제를 준비 중입니다.')}</div></div>
-      ${state.answerVisible ? `<div class="preview-answer"><small>정답</small><strong class="${answerSizeClass(projectionText(question.answer, 200))}">${richText(projectionText(question.answer, 200) || '정답 미입력')}</strong>${question.explanation ? `<span>${richText(projectionText(question.explanation, 400))}</span>` : ''}</div>` : ''}
-      <div class="preview-bottomline"><span>${esc(question.title)}</span><strong data-timer-value class="${timerClass(state.timer)}">${formatTime(getTimerRemaining(state.timer))}</strong></div>
-    </div>`;
+}
+
+function timerElements(selector) {
+  const frameDocument = document.querySelector('.presentation-frame')?.contentDocument;
+  return [...document.querySelectorAll(selector), ...(frameDocument?.querySelectorAll(selector) || [])];
 }
 
 function currentRoundLabel() {
@@ -880,7 +888,6 @@ function renderLive() {
     ${question ? `<div class="primary-controls"><button class="btn timer-toggle" data-action="timer-toggle"><span>${state.timer.running ? '타이머 일시정지' : '타이머 시작'}</span><kbd>Space</kbd></button><button class="btn presentation-next" data-action="toggle-answer" ${question.answer ? '' : 'disabled'}><span>${state.answerVisible ? '정답 숨기기' : '정답 공개'}</span><kbd>A</kbd></button></div>` : ''}
     <div class="transport-controls sequence-transport"><button class="btn" data-action="prev" ${cursor <= 0 ? 'disabled' : ''}>← 이전 항목</button><button class="btn primary" data-action="next" ${cursor >= total - 1 ? 'disabled' : ''}>다음 항목 →</button></div>
     ${question ? '<div class="row"><button class="btn sm ghost" data-action="reset-timer">시간 초기화 (R)</button><button class="btn sm ghost" data-action="edit-current">현재 문제 수정</button></div>' : ''}</article>
-    ${question ? `<article class="card current-question-card"><div class="stage-line"><div class="row">${categoryBadge(question)}<span class="question-index">${esc(currentRoundLabel())}</span></div><span class="question-title">${esc(question.id)}</span></div>${question.image ? `<img class="operator-question-image" src="${safeImage(question.image)}" alt="${esc(question.imageAlt || '문제 참고 이미지')}">` : ''}<div class="operator-question ${questionSizeClass(question.question)}">${richText(question.question || '아직 문제 내용이 입력되지 않았습니다.')}</div><div class="operator-answer visible"><span>진행자 전용 · 정답</span><strong>${richText(question.answer || '미입력')}</strong>${question.explanation ? `<p>${richText(question.explanation)}</p>` : ''}${question.acceptedAnswers ? `<p>인정 답안 · ${multiline(question.acceptedAnswers)}</p>` : ''}${question.judgeNote ? `<p>판정 메모 · ${multiline(question.judgeNote)}</p>` : ''}${question.note ? `<small>진행 메모 · ${multiline(question.note)}</small>` : ''}</div></article>` : ''}
     ${renderQuestionNavigation()}
     ${renderRuntimeControls()}
     </section><aside class="stack control-rail">${renderSlideSelector()}
@@ -1364,46 +1371,40 @@ function renderSettings() {
     </aside></div>`;
 }
 
-function renderScreen() {
-  const app = document.getElementById('app');
+function renderScreenMarkup(publicState) {
   if (!publicState) {
-    app.innerHTML = `<main class="screen-mode screen-waiting"><div class="screen-watermark" aria-hidden="true">Σ</div><section class="screen-message"><p>PROJECTOR</p><h1>진행자 화면에 연결 중입니다</h1><span>진행자 콘솔을 먼저 열어주세요.</span></section>${renderScreenTool()}</main>`;
-    bindScreenEvents();
-    return;
+    return `<main class="screen-mode screen-waiting"><div class="screen-watermark" aria-hidden="true">Σ</div><section class="screen-message"><p>PROJECTOR</p><h1>진행자 화면에 연결 중입니다</h1><span>진행자 콘솔을 먼저 열어주세요.</span></section></main>`;
   }
   const mode = SCREEN_MODES.has(publicState.displayMode) ? publicState.displayMode : 'lobby';
   const event = publicState.event || {};
   const messages = publicState.messages || {};
   if (mode === 'screen') {
     const screen = publicScreen(publicState.screen || {});
-    app.innerHTML = `<main class="screen-mode ${screen.template ? screenTheme(screen) : `custom-slide slide-${screen.style}`}"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title || '')}</div>${screen.template ? `<div class="screen-status"><span></span>${esc(screenModeMeta[screen.template].label)}</div>` : ''}</header>${screen.template && screen.template !== 'rules' ? '<div class="screen-watermark" aria-hidden="true">Σ</div>' : ''}${renderScreenContent(screen, false, event, messages)}<footer class="screen-simple-footer"><span>${esc(messages.tagline || '')}</span><span>SIGMA</span></footer>${renderScreenTool()}</main>`;
-    bindScreenEvents();
-    return;
+    return `<main class="screen-mode ${screen.template ? screenTheme(screen) : `custom-slide slide-${screen.style}`}"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title || '')}</div>${screen.template ? `<div class="screen-status"><span></span>${esc(screenModeMeta[screen.template].label)}</div>` : ''}</header>${screen.template && screen.template !== 'rules' ? '<div class="screen-watermark" aria-hidden="true">Σ</div>' : ''}${renderScreenContent(screen, false, event, messages)}<footer class="screen-simple-footer"><span>${esc(messages.tagline || '')}</span><span>SIGMA</span></footer></main>`;
   }
   if (mode === 'rules') {
     const rules = safeText(messages.rules, 1200).split(/\r?\n/).filter(Boolean).slice(0, 6).map(rule => safeText(rule, 180));
-    app.innerHTML = `<main class="screen-mode screen-rules"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title ?? '시그마 수학 골든벨')}</div><div class="screen-status"><span></span>진행 안내</div></header><section class="screen-rules-wrap"><p>HOW TO PLAY</p><h1>진행 안내</h1><ol>${rules.map(rule => `<li>${esc(rule)}</li>`).join('')}</ol></section><footer class="screen-simple-footer"><span>${esc(messages.tagline || '')}</span><span>SIGMA</span></footer>${renderScreenTool()}</main>`;
-    bindScreenEvents();
-    return;
+    return `<main class="screen-mode screen-rules"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title ?? '시그마 수학 골든벨')}</div><div class="screen-status"><span></span>진행 안내</div></header><section class="screen-rules-wrap"><p>HOW TO PLAY</p><h1>진행 안내</h1><ol>${rules.map(rule => `<li>${esc(rule)}</li>`).join('')}</ol></section><footer class="screen-simple-footer"><span>${esc(messages.tagline || '')}</span><span>SIGMA</span></footer></main>`;
   }
   if (mode !== 'question') {
     const title = messages[mode] ?? messages.lobby ?? '잠시 후 시작합니다';
     const kicker = mode === 'lobby' ? 'SIGMA GOLDEN BELL' : mode === 'opening' ? 'LET\'S BEGIN' : mode === 'break' ? 'BREAK TIME' : 'THANK YOU';
-    app.innerHTML = `<main class="screen-mode screen-${mode}"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title ?? '시그마 수학 골든벨')}</div><div class="screen-status"><span></span>${esc(screenModeMeta[mode].label)}</div></header><div class="screen-watermark" aria-hidden="true">Σ</div><section class="screen-message"><p>${esc(kicker)}</p><h1>${esc(title)}</h1><span>${mode === 'lobby' ? `${esc(event.date || '')}${event.date && event.place ? ' · ' : ''}${esc(event.place || '')}` : esc(messages.tagline || '')}</span></section><footer class="screen-simple-footer"><span>${esc(messages.tagline || '')}</span><span>SIGMA</span></footer>${renderScreenTool()}</main>`;
-    bindScreenEvents();
-    return;
+    return `<main class="screen-mode screen-${mode}"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title ?? '시그마 수학 골든벨')}</div><div class="screen-status"><span></span>${esc(screenModeMeta[mode].label)}</div></header><div class="screen-watermark" aria-hidden="true">Σ</div><section class="screen-message"><p>${esc(kicker)}</p><h1>${esc(title)}</h1><span>${mode === 'lobby' ? `${esc(event.date || '')}${event.date && event.place ? ' · ' : ''}${esc(event.place || '')}` : esc(messages.tagline || '')}</span></section><footer class="screen-simple-footer"><span>${esc(messages.tagline || '')}</span><span>SIGMA</span></footer></main>`;
   }
   const question = publicState.question;
   if (!question) {
-    app.innerHTML = `<main class="screen-mode screen-waiting"><section class="screen-message"><p>PLEASE WAIT</p><h1>문제를 준비 중입니다</h1></section>${renderScreenTool()}</main>`;
-    bindScreenEvents();
-    return;
+    return `<main class="screen-mode screen-waiting"><section class="screen-message"><p>PLEASE WAIT</p><h1>문제를 준비 중입니다</h1></section></main>`;
   }
   const category = categoryMeta[question.category] || categoryMeta.basic;
   const remaining = getTimerRemaining(publicState.timer);
   const image = safeImage(question.image);
-  app.innerHTML = `<main class="screen-mode screen-question-mode ${publicState.answerVisible ? 'answer-open' : ''}"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title ?? '시그마 수학 골든벨')}</div><div class="screen-round"><span class="screen-category ${category.className}">${esc(category.label)}</span><strong>${Number(publicState.currentIndex) + 1}</strong><span>/ ${Number(publicState.totalQuestions) || 0}</span></div></header><section class="screen-question-wrap"><p class="screen-q-title">${esc(question.title || `문제 ${Number(publicState.currentIndex) + 1}`)}</p><div class="screen-question-content ${image ? 'has-image' : ''}">${image ? `<img class="screen-question-image" src="${image}" alt="${esc(question.imageAlt || '문제 참고 이미지')}">` : ''}<h1 class="screen-question ${questionSizeClass(question.question)}">${richText(question.question || '문제를 준비 중입니다.')}</h1></div>${publicState.answerVisible ? `<div class="screen-answer"><span>정답</span><strong class="${answerSizeClass(question.answer)}">${richText(question.answer || '정답 미입력')}</strong>${question.explanation ? `<p>${richText(question.explanation)}</p>` : ''}</div>` : ''}</section><footer class="screen-footer"><div class="screen-timer-copy"><span data-timer-label>${remaining <= 0 ? '시간 종료' : '남은 시간'}</span><strong data-timer-value class="${timerClass(publicState.timer)}">${formatTime(remaining)}</strong></div><div class="screen-motto">${esc(messages.tagline ?? 'SIGMA GOLDEN BELL')}</div></footer><div class="screen-progress"><div data-timer-progress></div></div>${renderScreenTool()}</main>`;
+  return `<main class="screen-mode screen-question-mode ${publicState.answerVisible ? 'answer-open' : ''}"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title ?? '시그마 수학 골든벨')}</div><div class="screen-round"><span class="screen-category ${category.className}">${esc(category.label)}</span><strong>${Number(publicState.currentIndex) + 1}</strong><span>/ ${Number(publicState.totalQuestions) || 0}</span></div></header><section class="screen-question-wrap"><p class="screen-q-title">${esc(question.title || `문제 ${Number(publicState.currentIndex) + 1}`)}</p><div class="screen-question-content ${image ? 'has-image' : ''}">${image ? `<img class="screen-question-image" src="${image}" alt="${esc(question.imageAlt || '문제 참고 이미지')}">` : ''}<h1 class="screen-question ${questionSizeClass(question.question)}">${richText(question.question || '문제를 준비 중입니다.')}</h1></div>${publicState.answerVisible ? `<div class="screen-answer"><span>정답</span><strong class="${answerSizeClass(question.answer)}">${richText(question.answer || '정답 미입력')}</strong>${question.explanation ? `<p>${richText(question.explanation)}</p>` : ''}</div>` : ''}</section><footer class="screen-footer"><div class="screen-timer-copy"><span data-timer-label>${remaining <= 0 ? '시간 종료' : '남은 시간'}</span><strong data-timer-value class="${timerClass(publicState.timer)}">${formatTime(remaining)}</strong></div><div class="screen-motto">${esc(messages.tagline ?? 'SIGMA GOLDEN BELL')}</div></footer><div class="screen-progress"><div data-timer-progress></div></div></main>`;
+}
+
+function renderScreen() {
+  document.getElementById('app').innerHTML = `<main class="projection-host">${presentationFrame(publicState)}</main>${renderScreenTool()}`;
   bindScreenEvents();
+  fitPresentationFrame();
   refreshTimerDom();
 }
 

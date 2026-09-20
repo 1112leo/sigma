@@ -83,12 +83,14 @@ test('image completion preserves edits and ignores stale uploads and closed edit
   assert.equal(h.run('modal.question.image'),'');
 });
 
-test('operator answer/accepted answer/judge note are visible before public reveal', () => {
+test('live view omits the private answer panel while retaining notes in the editor', () => {
   const h=fixture();
   h.run(`Object.assign(state.questions[0],{acceptedAnswers:'삼',judgeNote:'동치 인정',note:'진행 메모'});`);
   const html=h.run('renderLive()');
-  assert.ok(html.includes('operator-answer visible'));
-  assert.ok(html.includes('인정 답안 · 삼'));
-  assert.ok(html.includes('판정 메모 · 동치 인정'));
+  assert.ok(!html.includes('operator-answer'));
+  assert.ok(!html.includes('진행자 전용 · 정답'));
+  assert.ok(!html.includes('동치 인정'));
+  h.run(`openQuestion(state.questions[0].id)`);
+  assert.ok(h.run('renderModal()').includes('동치 인정'));
   assert.ok(!JSON.stringify(h.json('buildPublicState()')).includes('동치 인정'));
 });

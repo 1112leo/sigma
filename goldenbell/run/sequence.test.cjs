@@ -144,7 +144,8 @@ test('long legacy rules stay intact through screen edits while projection stays 
 test('projector and preview number duplicate and reordered questions identically', () => {
   const h=fixture();
   h.run(`state.sequence=[{type:'question',questionId:'Q2'},{type:'question',questionId:'Q1'},{type:'question',questionId:'Q1'}]; goSequence(0);`);
-  assert.ok(h.run('renderPreview()').includes('1 / 3'));
+  assert.ok(h.run('renderScreenMarkup(buildPublicState())').includes('<strong>1</strong><span>/ 3</span>'));
+  assert.equal(h.run('renderPreview()'),h.run('presentationFrame(buildPublicState())'));
   assert.equal(h.run('buildPublicState().currentIndex'),0);
   assert.equal(h.run('buildPublicState().totalQuestions'),3);
 });

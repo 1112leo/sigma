@@ -2,6 +2,19 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const harness = require('./test-harness.cjs');
 
+test('preview and projector use identical slide documents before and after answer reveal', () => {
+  const h=harness();
+  h.run(`state.questions=[migrateQuestion({id:'Q',question:'$x^2$ <img src=x onerror=alert(1)>',answer:'ANSWER',judgeNote:'PRIVATE'})];state.sequence=[{type:'question',questionId:'Q'}];activateSequence(state,0);`);
+  for(const action of ['', 'toggleAnswer();', 'showImmediateScreen("waiting");', 'showImmediateScreen("rules");']) {
+    h.run(action);
+    const preview=h.run('renderPreview()');
+    h.run('publicState=buildPublicState();renderScreen();');
+    assert.ok(h.app.innerHTML.includes(preview));
+    assert.ok(!preview.includes('PRIVATE'));
+    assert.match(preview,/sandbox="allow-same-origin"/);
+  }
+});
+
 test('built-in slide designs survive public serialization and preserve editable copy', () => {
   const h = harness();
   for (const [id, mode] of Object.entries({waiting:'lobby',opening:'opening',rules:'rules',standby:'break',end:'ending'})) {

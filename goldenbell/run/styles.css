@@ -215,6 +215,8 @@ button:disabled { cursor: not-allowed; }
 .live-layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(330px, .72fr); gap: 18px; align-items: start; }
 .stage-card { padding: 18px; }
 .stage-heading { margin-bottom: 12px; }
+.projection-host { position: fixed; inset: 0; overflow: hidden; background: #050b16; }
+.presentation-frame { position: absolute; left: 50%; top: 50%; width: 1280px; height: 720px; border: 0; transform-origin: center; pointer-events: none; }
 .stage-preview {
   position: relative;
   width: 100%;
