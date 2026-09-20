@@ -514,6 +514,24 @@ kbd { min-width: 23px; padding: 3px 6px; border: 1px solid #536985; border-botto
 .answer-open .screen-question-content { flex: 0 1 auto; max-height: 36vh; }
 .answer-open .screen-question-image { max-height: 30vh; }
 .answer-open .screen-question-content.has-image .screen-question { max-width: 46%; font-size: clamp(20px, 2vw, 38px); }
+/* Reveal is a dedicated answer composition, with the question kept as context. */
+.answer-open .screen-question-wrap { justify-content: flex-start; gap: 14px; padding: 18px 32px; }
+.answer-open .screen-q-title { flex: none; margin: 0; font-size: 20px; }
+.answer-open .screen-question-content { flex: 0 0 132px; height: 132px; max-height: 132px; gap: 28px; }
+.answer-open .screen-question-image { max-height: 132px; max-width: 30%; border-radius: 8px; }
+.answer-open .screen-question { opacity: 1; color: #cbd5e1; overflow-wrap: anywhere; }
+.answer-open .screen-question.short,
+.answer-open .screen-question.medium { font-size: 30px; }
+.answer-open .screen-question-content.has-image .screen-question { max-width: 65%; font-size: 26px; }
+.answer-open .screen-answer { flex: 1; min-height: 0; width: 100%; margin: 0; padding: 18px 26px; display: flex; align-items: center; justify-content: center; color: #fbfdff; background: rgba(20, 36, 59, .78); border: 1px solid #40516d; border-top: 3px solid var(--gold); border-radius: 12px; box-shadow: none; }
+.screen-answer-body { width: 100%; text-align: center; overflow-wrap: anywhere; }
+.screen-answer-body > span { display: block; color: #cbd5e1; font-size: 18px; font-weight: 800; letter-spacing: .12em; }
+.screen-answer-body > strong { display: block; margin-top: 8px; color: var(--gold); font-size: 86px; font-weight: 950; line-height: 1.15; word-break: keep-all; overflow-wrap: anywhere; }
+.screen-answer-body > strong.medium { font-size: 52px; }
+.screen-answer-body > strong.long { font-size: 38px; }
+.screen-answer-body > p { margin: 14px 0 0; color: #e2e8f0; font-size: 24px; line-height: 1.5; word-break: keep-all; overflow-wrap: anywhere; }
+.screen-answer-body .katex-display { margin: .25em 0; }
+.answer-open .screen-timer-copy { opacity: .5; }
 .screen-footer { position: relative; z-index: 2; display: flex; align-items: flex-end; justify-content: space-between; gap: 2vw; }
 .screen-timer-copy { display: flex; align-items: baseline; gap: 1vw; }
 .screen-timer-copy > span { color: #b6c5d8; font-size: clamp(14px, 1.05vw, 21px); font-weight: 850; }

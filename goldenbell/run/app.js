@@ -831,7 +831,7 @@ function renderTab() {
 }
 
 function presentationFrame(payload) {
-  const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="./vendor/katex/katex.min.css"><link rel="stylesheet" href="./styles.css?v=20260920-matched"><style>html,body{margin:0;overflow:hidden}</style></head><body>${renderScreenMarkup(payload)}</body></html>`;
+  const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="./vendor/katex/katex.min.css"><link rel="stylesheet" href="./styles.css?v=20260920-answer"><style>html,body{margin:0;overflow:hidden}</style></head><body>${renderScreenMarkup(payload)}</body></html>`;
   return `<iframe class="presentation-frame" title="프레젠테이션 화면" sandbox="allow-same-origin" tabindex="-1" srcdoc="${esc(html)}"></iframe>`;
 }
 
@@ -850,7 +850,12 @@ function fitPresentationFrame() {
     frame.style.transform = `translate(-50%, -50%) scale(${scale})`;
   };
   fit();
-  frame.addEventListener('load', () => { fit(); refreshTimerDom(); });
+  frame.addEventListener('load', () => {
+    fit();
+    refreshTimerDom();
+    fitRevealedAnswer(frame);
+    frame.contentDocument?.fonts?.ready.then(() => fitRevealedAnswer(frame));
+  });
   if (typeof ResizeObserver !== 'undefined') {
     presentationObserver = new ResizeObserver(fit);
     presentationObserver.observe(frame.parentElement);
@@ -860,6 +865,24 @@ function fitPresentationFrame() {
 function timerElements(selector) {
   const frameDocument = document.querySelector('.presentation-frame')?.contentDocument;
   return [...document.querySelectorAll(selector), ...(frameDocument?.querySelectorAll(selector) || [])];
+}
+
+function fitRevealedAnswer(frame) {
+  const panel = frame.contentDocument?.querySelector('.screen-answer');
+  const content = panel?.querySelector('.screen-answer-body');
+  if (!content) return;
+  const question = frame.contentDocument.querySelector('.screen-question');
+  const reference = frame.contentDocument.querySelector('.screen-question-content');
+  if (question && reference) {
+    const fontSize = parseFloat(frame.contentWindow.getComputedStyle(question).fontSize);
+    const ratio = Math.min(1, reference.clientHeight / Math.max(1, question.scrollHeight), question.clientWidth / Math.max(1, question.scrollWidth));
+    question.style.fontSize = `${fontSize * ratio}px`;
+  }
+  content.style.zoom = '1';
+  const availableHeight = Math.max(1, panel.clientHeight - 36);
+  const availableWidth = Math.max(1, panel.clientWidth - 52);
+  content.style.width = `${availableWidth}px`;
+  content.style.zoom = String(Math.min(1, availableHeight / Math.max(1, content.scrollHeight), availableWidth / Math.max(1, content.scrollWidth)));
 }
 
 function currentRoundLabel() {
@@ -1398,7 +1421,7 @@ function renderScreenMarkup(publicState) {
   const category = categoryMeta[question.category] || categoryMeta.basic;
   const remaining = getTimerRemaining(publicState.timer);
   const image = safeImage(question.image);
-  return `<main class="screen-mode screen-question-mode ${publicState.answerVisible ? 'answer-open' : ''}"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title ?? '시그마 수학 골든벨')}</div><div class="screen-round"><span class="screen-category ${category.className}">${esc(category.label)}</span><strong>${Number(publicState.currentIndex) + 1}</strong><span>/ ${Number(publicState.totalQuestions) || 0}</span></div></header><section class="screen-question-wrap"><p class="screen-q-title">${esc(question.title || `문제 ${Number(publicState.currentIndex) + 1}`)}</p><div class="screen-question-content ${image ? 'has-image' : ''}">${image ? `<img class="screen-question-image" src="${image}" alt="${esc(question.imageAlt || '문제 참고 이미지')}">` : ''}<h1 class="screen-question ${questionSizeClass(question.question)}">${richText(question.question || '문제를 준비 중입니다.')}</h1></div>${publicState.answerVisible ? `<div class="screen-answer"><span>정답</span><strong class="${answerSizeClass(question.answer)}">${richText(question.answer || '정답 미입력')}</strong>${question.explanation ? `<p>${richText(question.explanation)}</p>` : ''}</div>` : ''}</section><footer class="screen-footer"><div class="screen-timer-copy"><span data-timer-label>${remaining <= 0 ? '시간 종료' : '남은 시간'}</span><strong data-timer-value class="${timerClass(publicState.timer)}">${formatTime(remaining)}</strong></div><div class="screen-motto">${esc(messages.tagline ?? 'SIGMA GOLDEN BELL')}</div></footer><div class="screen-progress"><div data-timer-progress></div></div></main>`;
+  return `<main class="screen-mode screen-question-mode ${publicState.answerVisible ? 'answer-open' : ''}"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title ?? '시그마 수학 골든벨')}</div><div class="screen-round"><span class="screen-category ${category.className}">${esc(category.label)}</span><strong>${Number(publicState.currentIndex) + 1}</strong><span>/ ${Number(publicState.totalQuestions) || 0}</span></div></header><section class="screen-question-wrap"><p class="screen-q-title">${esc(question.title || `문제 ${Number(publicState.currentIndex) + 1}`)}</p><div class="screen-question-content ${image ? 'has-image' : ''}">${image ? `<img class="screen-question-image" src="${image}" alt="${esc(question.imageAlt || '문제 참고 이미지')}">` : ''}<h1 class="screen-question ${questionSizeClass(question.question)}">${richText(question.question || '문제를 준비 중입니다.')}</h1></div>${publicState.answerVisible ? `<div class="screen-answer"><div class="screen-answer-body"><span>정답</span><strong class="${answerSizeClass(question.answer)}">${richText(question.answer || '정답 미입력')}</strong>${question.explanation ? `<p>${richText(question.explanation)}</p>` : ''}</div></div>` : ''}</section><footer class="screen-footer"><div class="screen-timer-copy"><span data-timer-label>${remaining <= 0 ? '시간 종료' : '남은 시간'}</span><strong data-timer-value class="${timerClass(publicState.timer)}">${formatTime(remaining)}</strong></div><div class="screen-motto">${esc(messages.tagline ?? 'SIGMA GOLDEN BELL')}</div></footer><div class="screen-progress"><div data-timer-progress></div></div></main>`;
 }
 
 function renderScreen() {
