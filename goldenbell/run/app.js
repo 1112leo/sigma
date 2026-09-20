@@ -208,6 +208,20 @@ function normalizePresentation(raw, next) {
     next.sequenceIndex = Math.max(0, position);
   } else next.sequenceIndex = next.sequence.length ? Math.round(clampNumber(raw.sequenceIndex, 0, next.sequence.length - 1, 0)) : -1;
   next.runtime = normalizeRuntime(raw.runtime, next.sequence.length);
+  // Retire old interventions without changing the user's configured slides or questions.
+  const oldOverlay = next.runtime.overlay;
+  if (oldOverlay) {
+    const position = next.sequence.findIndex(item => item.type === oldOverlay.type && (item.type === 'screen' ? item.screenId === oldOverlay.screenId : item.questionId === oldOverlay.questionId));
+    if (position >= 0) next.sequenceIndex = position;
+  }
+  if (oldOverlay || next.runtime.currentInsertionId) {
+    next.answerVisible = false;
+    next.timer = { remaining: 0, running: false, endAt: null };
+  }
+  next.runtime.insertions = [];
+  next.runtime.returns = [];
+  next.runtime.overlay = null;
+  next.runtime.currentInsertionId = null;
   next.runSettings = { safetyLock: true, showEventClock: raw.runSettings?.showEventClock === true, eventDate: validEventDate(raw.runSettings?.eventDate) && raw.runSettings.eventDate !== '2026-10-23' ? raw.runSettings.eventDate : '2026-10-30', startTime: validClockTime(raw.runSettings?.startTime) ? raw.runSettings.startTime : '15:50', endTime: validClockTime(raw.runSettings?.endTime) ? raw.runSettings.endTime : '17:30' };
   if (/^2026\.10\.23\(금\)(?: 15:50~17:30)?$/.test(next.event.date)) next.event.date = '2026.10.30(금)';
   const item = activeItem(next);
@@ -938,35 +952,8 @@ function jumpQuestionGroup(group, position) {
   return goRuntimePosition(position);
 }
 
-function renderQuestionNavigation() {
-  const cursor = runtimePosition(state);
-  const previous = state.runtime.returns.at(-1);
-  const returnItem = previous?.overlay || (previous?.currentInsertionId ? state.runtime.insertions.find(row => row.id === previous.currentInsertionId) : state.sequence[previous?.sequenceIndex]);
-  const returnLabel = returnItem?.questionId ? sequenceItemLabel({ type: 'question', questionId: returnItem.questionId }) : returnItem ? sequenceItemLabel(returnItem) : '';
-  return `<article class="card"><div class="section-head"><div><p class="eyebrow">구간별 바로 이동</p><h2>문제 이동·복귀</h2></div><button class="btn primary" data-action="runtime-return" ${previous ? '' : 'disabled'}>이동 전 문제·화면으로 복귀</button></div>${previous ? `<p class="sub">복귀 대상 · ${esc(returnLabel)} · 남은 시간 ${formatTime(previous.remaining)}초</p>` : ''}<div class="question-navigation">${Object.entries(navigationGroups).map(([group,label]) => {
-    const items = navigationItems(group);
-    const selected = items.find(row => row.position >= cursor) || items[0];
-    return `<div class="field"><label for="jump-${group}">${label} (${items.length})</label><select id="jump-${group}" ${items.length ? '' : 'disabled'}>${items.length ? items.map(row => `<option value="${row.position}" ${row === selected ? 'selected' : ''}>${row.position + 1}. ${esc(row.question.title || row.question.question || row.question.id)}${row.question.round ? ' · ' + esc(roundLabels[row.question.round]) : ''}${row.position === cursor && !state.runtime.overlay ? ' · 현재' : ''}</option>`).join('') : '<option>행사 구성에 등록된 문제 없음</option>'}</select><button class="btn" data-question-jump="${group}" ${items.length ? '' : 'disabled'}>${label} 이동</button></div>`;
-  }).join('')}</div><p class="sub">문제를 선택해 이동하면 현재 위치와 남은 시간을 기억합니다. 복귀 후 타이머는 직접 재개하세요. 패자부활 1·2차는 목록의 라운드 표시로 구분합니다.</p></article>`;
-}
 
-function renderRuntimeControls() {
-  const question = currentQuestion();
-  const invalid = question && state.runtime.invalidQuestions.some(row => row.questionId === question.id);
-  return `<article class="card runtime-card"><div class="section-head"><div><p class="eyebrow">운영자 전용 · 원본 구성 유지</p><h2>돌발상황 대응</h2></div><span class="badge green">진행 안전 확인 항상 적용</span></div>
-    ${state.runtime.overlay ? '<p class="overflow-notice">즉시 송출 중 · 복귀하거나 다음 항목으로 이동할 수 있습니다.</p>' : ''}
-    ${invalid ? '<p class="overflow-notice">이번 진행에서 무효 처리한 문제입니다. 원본은 유지됩니다.</p>' : ''}
-    <div class="runtime-buttons">${[['judging','판정 중'],['standby','잠시 대기'],['invalid-question','문제 무효 안내'],['technical','기술 문제 발생']].map(([id,label])=>`<button class="btn" data-immediate-screen="${id}">${label}</button>`).join('')}
-    <button class="btn primary" data-action="reserve-picker">예비문제</button><button class="btn" data-action="runtime-return" ${state.runtime.returns.length ? '' : 'disabled'}>직전 화면 복귀</button><button class="btn danger-ghost" data-action="invalid-question" ${question ? '' : 'disabled'}>현재 문제 무효 처리</button><button class="btn ghost" data-action="runtime-clear">임시 진행 정리</button></div>
-    <div class="runtime-jump"><label for="runtime-jump">특정 항목으로 이동 (복귀 가능)</label><select id="runtime-jump">${effectiveSequence(state).map((item,index)=>`<option value="${index}" ${index === runtimePosition(state) ? 'selected' : ''}>${index+1}. ${esc(sequenceItemLabel(item))}${item.insertionId ? ' · 임시 예비문제' : ''}</option>`).join('')}</select><button class="btn" data-action="runtime-jump" ${effectiveSequence(state).length ? '' : 'disabled'}>선택 항목으로 이동</button></div>
-    <p class="sub">예비 사용 ${state.runtime.reserveUses.length}회 · 임시 삽입 ${state.runtime.insertions.length}개 · 무효 ${state.runtime.invalidQuestions.length}개. 복귀 후 타이머는 직접 재개합니다.</p></article>
-    <details class="card runtime-logs"><summary>진행 로그 (${state.runtime.logs.length}개 · 최근 2,000개 저장)</summary><button class="btn sm danger-ghost" data-action="clear-logs">로그 초기화</button><ol>${state.runtime.logs.slice(-50).reverse().map(row=>`<li><time>${esc(new Date(row.at).toLocaleTimeString('ko-KR'))}</time> ${esc(row.label)}</li>`).join('') || '<li>아직 기록이 없습니다.</li>'}</ol><p class="sub">화면에는 최근 50개를 표시합니다. 전체 기록은 JSON 백업에 포함됩니다.</p></details>`;
-}
 
-function renderReservePicker() {
-  const reserves = state.questions.filter(question => question.usageStatus === 'reserve');
-  return `<div class="modal-backdrop" data-action="close-backdrop"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="section-head"><h2 id="modal-title">예비문제 선택</h2><button class="btn" data-action="close-modal">닫기</button></div><p class="sub">원본 행사 구성은 바꾸지 않습니다. 즉시 송출 후에는 복귀할 수 있습니다.</p><div class="stack">${reserves.map(question=>`<article class="card"><strong>${esc(question.id)}</strong><p class="sub">${categoryMeta[question.category].label} · ${difficultyLabels[question.difficulty]} · ${question.timeLimit}초</p><p>${esc(question.question.slice(0,160) || '문제 미입력')}</p><div class="row"><button class="btn primary" data-reserve-id="${esc(question.id)}" data-reserve-mode="immediate">즉시 송출</button><button class="btn" data-reserve-id="${esc(question.id)}" data-reserve-mode="insert">다음에 임시 삽입</button></div></article>`).join('') || '<p>예비문제가 없습니다. 문제 편집에서 사용 상태를 예비로 지정해주세요.</p>'}</div></section></div>`;
-}
 
 function renderEventStatus() {
   const clock = eventClock(state);
@@ -1053,10 +1040,6 @@ function logCurrentItem(next) {
   runtimeLog(next, item?.type === 'question' ? 'question-start' : 'screen', item?.type === 'question' ? `${item.questionId} 시작` : `${sequenceItemLabel(item)} 화면`);
 }
 
-function rememberPosition(next, kind) {
-  if (next.runtime.returns.length >= 20) next.runtime.returns.shift();
-  next.runtime.returns.push({ kind, sequenceIndex: next.sequenceIndex, currentInsertionId: next.runtime.currentInsertionId, overlay: next.runtime.overlay ? { ...next.runtime.overlay } : null, remaining: getTimerRemaining(next.timer), answerVisible: next.answerVisible });
-}
 
 function goSequence(index, remember = false) {
   if (!Number.isInteger(index) || index < 0 || index >= state.sequence.length) return;
@@ -1068,8 +1051,6 @@ function goRuntimePosition(position, remember = false) {
   const target = effectiveSequence(state)[position];
   if (!target || !mayNavigate()) return;
   return update(next => {
-    if (remember) rememberPosition(next, 'jump');
-    else if (next.runtime.overlay && next.runtime.returns.at(-1)?.kind === 'override') next.runtime.returns.pop();
     next.sequenceIndex = target.baseIndex;
     next.runtime.currentInsertionId = target.insertionId || null;
     next.runtime.overlay = null;
@@ -1079,79 +1060,13 @@ function goRuntimePosition(position, remember = false) {
   });
 }
 
-function showImmediateScreen(screenId, invalidate = false) {
-  if (screenId !== 'technical' && !state.customScreens.some(screen => screen.id === screenId)) return;
-  const question = currentQuestion();
-  return update(next => {
-    if (!next.runtime.overlay || next.runtime.overlay.type === 'question') rememberPosition(next, 'override');
-    if (invalidate && question && !next.runtime.invalidQuestions.some(row => row.questionId === question.id)) {
-      next.runtime.invalidQuestions.push({ questionId: question.id, at: new Date().toISOString() });
-      runtimeLog(next, 'invalid', `${question.id} 문제 무효`);
-    }
-    next.runtime.overlay = { type: 'screen', screenId };
-    activateCurrentItem(next);
-    runtimeLog(next, 'immediate-screen', `${sequenceItemLabel(next.runtime.overlay)} 즉시 송출`);
-  });
-}
 
-function returnToPrevious() {
-  if (!state.runtime.returns.length || !mayNavigate()) return;
-  return update(next => {
-    const saved = next.runtime.returns.pop();
-    next.sequenceIndex = next.sequence.length ? Math.min(next.sequence.length - 1, Math.max(0, saved.sequenceIndex)) : -1;
-    next.runtime.currentInsertionId = next.runtime.insertions.some(row => row.id === saved.currentInsertionId) ? saved.currentInsertionId : null;
-    next.runtime.overlay = saved.overlay;
-    activateCurrentItem(next);
-    if (next.displayMode === 'question') {
-      next.timer.remaining = saved.remaining;
-      next.answerVisible = saved.answerVisible && !next.runtime.invalidQuestions.some(row => row.questionId === activeItem(next)?.questionId);
-    }
-    runtimeLog(next, 'return', '직전 화면으로 복귀 · 타이머 일시정지');
-  });
-}
 
-function useReserve(questionId, mode) {
-  const question = state.questions.find(item => item.id === questionId && item.usageStatus === 'reserve');
-  if (!question || !['immediate', 'insert'].includes(mode)) return;
-  if (mode === 'insert' && state.runtime.insertions.length >= 500) return toast('임시 삽입은 최대 500개입니다.');
-  if (mode === 'immediate' && !mayNavigate()) return;
-  const saved = update(next => {
-    if (mode === 'immediate') {
-      rememberPosition(next, 'override');
-      next.runtime.overlay = { type: 'question', questionId };
-      activateCurrentItem(next);
-      logCurrentItem(next);
-    } else {
-      const row = { id: createId(), questionId, afterIndex: next.sequenceIndex };
-      const current = next.runtime.insertions.findIndex(item => item.id === next.runtime.currentInsertionId);
-      const firstAfter = next.runtime.insertions.findIndex(item => item.afterIndex === next.sequenceIndex);
-      const at = current >= 0 ? current + 1 : firstAfter >= 0 ? firstAfter : next.runtime.insertions.length;
-      next.runtime.insertions.splice(at, 0, row);
-    }
-    next.runtime.reserveUses.push({ questionId, mode, at: new Date().toISOString() });
-    if (next.runtime.reserveUses.length > 2000) next.runtime.reserveUses.shift();
-    runtimeLog(next, 'reserve-use', `${questionId} 예비문제 ${mode === 'insert' ? '다음에 임시 삽입' : '즉시 사용'}`);
-  });
-  if (saved) { modal = null; render(); }
-}
 
 function canEditSequence() {
-  if (state.runtime.insertions.length || state.runtime.returns.length || state.runtime.overlay) {
-    toast('임시 진행을 정리한 뒤 원본 구성을 편집해주세요.');
-    return false;
-  }
   return mayNavigate();
 }
 
-function clearInterventions() {
-  if (!confirm('임시 삽입과 복귀 위치를 정리할까요? 원본 구성과 사용·무효·진행 로그는 유지합니다.')) return;
-  update(next => {
-    next.runtime.insertions = [];
-    next.runtime.returns = [];
-    activateSequence(next, next.sequenceIndex);
-    runtimeLog(next, 'runtime-clear', '임시 진행 정리');
-  });
-}
 
 function appendSequence(type, id) {
   if (!canEditSequence()) return;
@@ -1350,7 +1265,7 @@ async function applyBatch() {
     if (failed.length) throw new Error(`이미지를 읽을 수 없는 문제: ${failed.join(', ')}`);
     result = prepareBatch(); // Merge against current data, not an old preview.
     if (result.errors.length) return;
-    if (draft.mode === 'replace' && !confirm('전체 문제를 교체할까요? 타이머·정답 공개·임시 진행 기록은 초기화됩니다. 기존 행사 구성은 유지되어 누락 참조가 생길 수 있습니다. 적용 전 JSON 백업을 저장합니다.')) return;
+    if (draft.mode === 'replace' && !confirm('전체 문제를 교체할까요? 타이머와 정답 공개 상태는 초기화됩니다. 기존 행사 구성은 유지되어 누락 참조가 생길 수 있습니다. 적용 전 JSON 백업을 저장합니다.')) return;
     if (draft.mode !== 'replace' && !mayNavigate()) return;
     downloadBackup('before-question-import');
     commitQuestionBatch(result, draft.mode);
@@ -1383,12 +1298,12 @@ function renderPreparation() {
   const stale = result && result.signature !== preparationSignature();
   return `<div class="preparation-grid"><section class="stack"><article class="card"><div class="section-head"><div><p class="eyebrow">행사 준비</p><h2>행사 준비 점검</h2></div><button class="btn primary" data-action="preflight" ${preflightBusy ? 'disabled' : ''}>${preflightBusy ? '사진 확인 중…' : '자동 점검 실행'}</button></div><p class="sub">문제·수식·사진 파일·구성 참조를 검사합니다. 경고가 있어도 진행을 강제로 막지 않습니다.</p>
     ${result ? `${stale ? '<p class="overflow-notice">점검 후 데이터가 변경되었습니다. 다시 점검해주세요.</p>' : ''}<div class="preflight-stats"><span>✓ 내용 정상 ${result.normal}개</span><span>✕ 오류 ${result.issues.filter(i => i.severity === 'error').length}건</span><span>⚠ 경고 ${result.issues.filter(i => i.severity === 'warning').length}건</span><span>예비문제 ${result.reserve}개</span></div><ul class="validation-list">${result.issues.map(issue => `<li class="${issue.severity}">${issue.severity === 'error' ? '✕' : '⚠'} ${esc(issue.label)}</li>`).join('') || '<li>자동 검사 항목을 모두 통과했습니다.</li>'}</ul>` : '<p class="empty-state">아직 점검하지 않았습니다.</p>'}</article>
-    <article class="card"><h2>시작 전 직접 확인</h2><p class="sub">하드웨어 자동 감지가 아닙니다. 실제 프로젝터와 진행 노트북에서 확인하세요. 체크 상태는 이 탭을 닫으면 초기화됩니다.</p><div class="startup-checks">${[['projector', '프로젝터 연결·전체 화면·가독성'], ['data', '문제 데이터·사진·수식·JSON 백업'], ['sequence', '행사 순서·패자부활·최종 라운드'], ['timer', '타이머 시작·종료·복귀 동작'], ['settings', '행사 날짜·시간·부제·안전 잠금']].map(([id, label]) => `<label><input type="checkbox" data-startup-check="${id}" ${startupChecks.has(id) ? 'checked' : ''}>${label}</label>`).join('')}</div><p class="field-help">오프라인 현장 진행은 이 프로젝트의 로컬 서버 실행을 권장합니다. KaTeX와 폰트는 프로젝트 내부 파일이며 CDN을 사용하지 않습니다.</p></article></section>
+    <article class="card"><h2>시작 전 직접 확인</h2><p class="sub">하드웨어 자동 감지가 아닙니다. 실제 프로젝터와 진행 노트북에서 확인하세요. 체크 상태는 이 탭을 닫으면 초기화됩니다.</p><div class="startup-checks">${[['projector', '프로젝터 연결·전체 화면·가독성'], ['data', '문제 데이터·사진·수식·JSON 백업'], ['sequence', '행사 순서·패자부활·최종 라운드'], ['timer', '타이머 시작·종료·슬라이드 이동'], ['settings', '행사 날짜·시간·부제·안전 잠금']].map(([id, label]) => `<label><input type="checkbox" data-startup-check="${id}" ${startupChecks.has(id) ? 'checked' : ''}>${label}</label>`).join('')}</div><p class="field-help">오프라인 현장 진행은 이 프로젝트의 로컬 서버 실행을 권장합니다. KaTeX와 폰트는 프로젝트 내부 파일이며 CDN을 사용하지 않습니다.</p></article></section>
     <section class="card"><p class="eyebrow">문제 제작</p><h2>문제 일괄 가져오기</h2><p class="sub">문제만 추가·업데이트·교체합니다. 전체 백업 복원은 행사·슬라이드 설정에서 사용하세요. JSON 배열 또는 { questions: [...] }, CSV를 지원합니다.</p>
     <form id="batch-form" class="form-grid one-column"><div class="field"><label for="batch-file">JSON / CSV 파일</label><input id="batch-file" type="file" accept=".json,.csv,application/json,text/csv" ${importDraft?.busy ? 'disabled' : ''}></div><div class="field"><label for="batch-format">붙여넣기 형식</label><select id="batch-format" ${importDraft?.busy ? 'disabled' : ''}>${selectOptions({ json: 'JSON', csv: 'CSV' }, importDraft?.format || 'json')}</select></div><div class="field"><label for="batch-text">문제 데이터 붙여넣기</label><textarea id="batch-text" rows="6" ${importDraft?.busy ? 'disabled' : ''}>${esc(importDraft?.text || '')}</textarea></div><button type="submit" class="btn" ${importDraft?.busy ? 'disabled' : ''}>파싱·미리보기</button></form>
     <p class="field-help">CSV 헤더: id,category,round,question,answer,explanation,acceptedAnswers,judgeNote,author,difficulty,timeLimit,usageStatus,reviewStatus<br>생략된 선택 필드는 새 문제의 기본값을 사용합니다. ID 업데이트는 생략된 기존 필드를 유지합니다. 빈 round는 미지정입니다.</p>
     ${importDraft?.error ? `<p class="overflow-notice" role="alert">${esc(importDraft.error)}</p>` : ''}
-    ${preview ? `<div class="import-preview"><h3>적용 전 미리보기 · ${importDraft.rows.length}개</h3><div class="field"><label for="batch-mode">가져오기 방식</label><select id="batch-mode" ${importDraft.busy ? 'disabled' : ''}>${selectOptions({ append: '기존 문제에 추가', update: 'ID가 같으면 업데이트', replace: '전체 문제 교체' }, importDraft.mode)}</select></div><p class="sub">적용 후 전체 ${preview.questions.length}개. 전체 교체 시 원본 행사 구성은 유지하고 임시 진행은 초기화합니다. 구성의 누락 참조는 자동 점검에서 확인하세요.</p><ul class="validation-list">${preview.errors.map(error => `<li class="error">${error.row ? `문제 ${error.row}` : '전체'} · ${esc(error.message)}</li>`).join('')}</ul><div class="import-rows">${preview.prepared.map(q => `<article><small>${esc(q.id)} · ${esc(q.category)} · ${esc(q.round || '미지정')}</small><div>${richText(q.question || '문제 없음')}</div><p>정답: ${richText(q.answer || '정답 없음')}</p></article>`).join('')}</div><button class="btn primary" data-action="batch-apply" ${preview.errors.length || importDraft.busy || persistenceBlocked ? 'disabled' : ''}>${importDraft.busy ? '확인 중…' : '검증한 문제 적용'}</button></div>` : ''}</section></div>`;
+    ${preview ? `<div class="import-preview"><h3>적용 전 미리보기 · ${importDraft.rows.length}개</h3><div class="field"><label for="batch-mode">가져오기 방식</label><select id="batch-mode" ${importDraft.busy ? 'disabled' : ''}>${selectOptions({ append: '기존 문제에 추가', update: 'ID가 같으면 업데이트', replace: '전체 문제 교체' }, importDraft.mode)}</select></div><p class="sub">적용 후 전체 ${preview.questions.length}개. 전체 교체 시 행사 구성은 유지하고 타이머와 정답 공개 상태를 초기화합니다. 구성의 누락 참조는 자동 점검에서 확인하세요.</p><ul class="validation-list">${preview.errors.map(error => `<li class="error">${error.row ? `문제 ${error.row}` : '전체'} · ${esc(error.message)}</li>`).join('')}</ul><div class="import-rows">${preview.prepared.map(q => `<article><small>${esc(q.id)} · ${esc(q.category)} · ${esc(q.round || '미지정')}</small><div>${richText(q.question || '문제 없음')}</div><p>정답: ${richText(q.answer || '정답 없음')}</p></article>`).join('')}</div><button class="btn primary" data-action="batch-apply" ${preview.errors.length || importDraft.busy || persistenceBlocked ? 'disabled' : ''}>${importDraft.busy ? '확인 중…' : '검증한 문제 적용'}</button></div>` : ''}</section></div>`;
 }
 
 function renderSettings() {
@@ -1451,7 +1366,6 @@ function bindScreenEvents() {
 }
 
 function renderModal() {
-  if (modal.type === 'reserve') return renderReservePicker();
   if (modal.type === 'screen') return renderScreenEditor();
   if (modal.type !== 'question') return '';
   const question = modal.question;
@@ -1513,11 +1427,8 @@ function bindEvents() {
   });
   document.getElementById('run-settings-form')?.addEventListener('submit', event => { event.preventDefault(); saveRunSettings(); });
   document.getElementById('manual-timer-form')?.addEventListener('submit', event => { event.preventDefault(); setManualTimer(document.getElementById('manual-timer').value); });
-  document.querySelectorAll('[data-reserve-id]').forEach(element => element.addEventListener('click', () => useReserve(element.dataset.reserveId, element.dataset.reserveMode)));
-  document.querySelectorAll('[data-immediate-screen]').forEach(element => element.addEventListener('click', () => showImmediateScreen(element.dataset.immediateScreen)));
   document.querySelectorAll('[data-screen-mode]').forEach(element => element.addEventListener('click', () => setScreenMode(element.dataset.screenMode)));
   document.querySelectorAll('[data-group-mode]').forEach(element => element.addEventListener('click', () => jumpGroupMode(element.dataset.groupMode)));
-  document.querySelectorAll('[data-question-jump]').forEach(element => element.addEventListener('click', () => jumpQuestionGroup(element.dataset.questionJump, Number(document.getElementById(`jump-${element.dataset.questionJump}`).value))));
   document.getElementById('screen-form')?.addEventListener('submit', event => { event.preventDefault(); saveScreen(); });
   document.querySelectorAll('[data-edit-screen]').forEach(element => element.addEventListener('click', () => openScreenEditor(element.dataset.editScreen)));
   document.querySelectorAll('[data-sequence-go]').forEach(element => element.addEventListener('click', () => goSequence(Number(element.dataset.sequenceGo), true)));
@@ -1557,12 +1468,7 @@ function handleAction(action) {
   const question = currentQuestion();
   if (action === 'batch-apply') return applyBatch();
   if (action === 'preflight') return runPreflight();
-  if (action === 'reserve-picker') { modal = { type: 'reserve' }; return render(); }
-  if (action === 'runtime-return') return returnToPrevious();
-  if (action === 'runtime-clear') return clearInterventions();
-  if (action === 'runtime-jump') return goRuntimePosition(Number(document.getElementById('runtime-jump').value), true);
   if (action === 'slide-jump') return goRuntimePosition(Number(document.getElementById('slide-jump').value));
-  if (action === 'invalid-question' && question && confirm(`${question.id} 문제를 이번 진행에서 무효로 표시할까요? 원본 문제는 유지됩니다.`)) return showImmediateScreen('invalid-question', true);
   if (action === 'clear-logs' && confirm('진행 로그를 초기화할까요? 예비문제 사용 기록과 무효 표시는 유지됩니다.')) return update(next => { next.runtime.logs = []; });
   if (action === 'event-start' && (!state.runtime.startedAt || confirm('행사 경과시간을 지금부터 다시 측정할까요?'))) return update(next => { next.runtime.startedAt = new Date().toISOString(); runtimeLog(next, 'event-start', '행사 시간 측정 시작'); });
   if (action === 'add-screen') return openScreenEditor();

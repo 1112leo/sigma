@@ -5,7 +5,7 @@ const harness = require('./test-harness.cjs');
 test('preview and projector use identical slide documents before and after answer reveal', () => {
   const h=harness();
   h.run(`state.questions=[migrateQuestion({id:'Q',question:'$x^2$ <img src=x onerror=alert(1)>',answer:'ANSWER',judgeNote:'PRIVATE'})];state.sequence=[{type:'question',questionId:'Q'}];activateSequence(state,0);`);
-  for(const action of ['', 'toggleAnswer();', 'showImmediateScreen("waiting");', 'showImmediateScreen("rules");']) {
+  for(const action of ['', 'toggleAnswer();', 'state.sequence.push({type:"screen",screenId:"waiting"});goSequence(state.sequence.length-1);', 'state.sequence.push({type:"screen",screenId:"rules"});goSequence(state.sequence.length-1);']) {
     h.run(action);
     const preview=h.run('renderPreview()');
     h.run('publicState=buildPublicState();renderScreen();');
@@ -42,7 +42,7 @@ test('custom content, styles and safety-preserving quick slide controls remain a
   assert.equal(h.json(`publicScreen({id:'private',template:'<script>',judgeNote:'SECRET'})`).template,'');
   assert.match(h.run(`renderScreenContent({id:'custom',title:'사용자 화면',style:'gold'})`), /custom-screen-content slide-gold/);
   const before=h.json('state.sequence');
-  h.run(`showImmediateScreen('opening')`);
+  h.run(`setScreenMode('opening')`);
   assert.deepEqual(h.json('state.sequence'),before);
   assert.match(h.run('renderLive()'), /mode-card/);
   assert.match(h.run('renderLive()'), /data-screen-mode="rules"/);

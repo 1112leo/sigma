@@ -37,7 +37,7 @@ test('update preserves omitted metadata/photo/createdAt/order, explicit blank cl
 });
 test('atomic replace clears runtime, stops timer/reveal, retains sequence for explicit preflight, quota failure preserves preview', () => {
   const h = setup();
-  h.run('state = defaultState(); activateSequence(state,3); startTimer(); showImmediateScreen("judging"); importDraft={rows:input,mode:"replace"}; const before = structuredClone(state); const result=prepareBatch();');
+  h.run('state = defaultState(); activateSequence(state,3); startTimer(); state.runtime.overlay={type:"screen",screenId:"judging"}; importDraft={rows:input,mode:"replace"}; const before = structuredClone(state); const result=prepareBatch();');
   const before = h.json('state');
   h.context.localStorage.setItem = () => { throw new Error('quota'); };
   assert.equal(h.run('commitQuestionBatch(result,"replace")'),false);
@@ -102,8 +102,8 @@ test('preview IDs remain stable through modes and existing duplicate IDs block u
   assert.ok(h.json('checkPreparation(state,{validTime:validTimeLimit,safeImage,math:renderMath}).issues').some(i=>i.code==='duplicate-id'));
 });
 test('import disarms old reveal snapshots and resolves a recovered current missing reference', () => {
-  const h=setup(); h.run('state.questions=input.map(migrateQuestion); state.sequence=[{type:"question",questionId:"A"}]; activateSequence(state,0); state.answerVisible=true; showImmediateScreen("judging");');
-  h.run('commitQuestionBatch(prepareQuestionImport([{id:"A",answer:"NEW"}],state.questions,"update",opts),"update"); returnToPrevious()');
+  const h=setup(); h.run('state.questions=input.map(migrateQuestion); state.sequence=[{type:"question",questionId:"A"}]; activateSequence(state,0); state.answerVisible=true; state.runtime.overlay={type:"screen",screenId:"judging"};');
+  h.run('state=normalizeState(state);commitQuestionBatch(prepareQuestionImport([{id:"A",answer:"NEW"}],state.questions,"update",opts),"update")');
   assert.equal(h.run('state.answerVisible'),false); assert.equal(h.run('buildPublicState().question.answer'),'');
   h.run('state.questions=[]; activateSequence(state,0); commitQuestionBatch(prepareQuestionImport(input,[],"append",opts),"append")');
   assert.equal(h.run('state.displayMode'),'question'); assert.equal(h.run('buildPublicState().question.question'),source[0].question);
@@ -116,9 +116,9 @@ test('unsupported trusted math commands fall back to complete raw input and warn
 });
 test('late full-backup reads cannot mutate or broadcast after PIN lock and restores disarm reveal snapshots', () => {
   const h=setup(); const readers=[]; h.context.FileReader=class { constructor(){readers.push(this);} readAsText(){} };
-  h.run('downloadBackup=()=>{}; isUnlocked=()=>true; state=defaultState(); activateSequence(state,3); state.answerVisible=true; showImmediateScreen("judging"); const backup=JSON.stringify(state); importData({target:{files:[{size:10}],value:""}});');
+  h.run('downloadBackup=()=>{}; isUnlocked=()=>true; state=defaultState(); activateSequence(state,3); state.answerVisible=true; state.runtime.overlay={type:"screen",screenId:"judging"}; const backup=JSON.stringify(state); importData({target:{files:[{size:10}],value:""}});');
   readers[0].result=h.run('backup'); readers[0].onload();
-  assert.equal(h.run('state.runtime.returns[0].answerVisible'),false);
+  assert.equal(h.run('state.runtime.returns.length'),0);
   h.run('importData({target:{files:[{size:10}],value:""}}); lockConsole();');
   const stored=h.storage.get('sigma-goldenbell-v1');
   readers[1].result=h.run('backup'); readers[1].onload();
