@@ -135,7 +135,7 @@ test('physical A reveals with Korean layout and button focus, but never while ed
 test('live surface exposes modes and configured navigation without temporary operations', () => {
   const h=fixture();
   const html=h.run('renderLive()');
-  for(const group of ['basic','hard','revival','final']) assert.match(html, new RegExp(`data-group-mode="${group}"`));
+  for(const group of ['basic','hard']) assert.match(html, new RegExp(`data-group-mode="${group}"`));
   assert.doesNotMatch(html, /runtime-return|runtime-clear|reserve-picker|data-immediate-screen/);
   assert.match(html, /id="slide-jump"/);
   assert.doesNotMatch(html, /overview-card|shortcut-card/);
@@ -150,7 +150,9 @@ test('screen mode then next follows the selected screen in the configured sequen
   h.run(`advancePresentation();`);
   assert.equal(h.run('state.sequenceIndex'),2);
   assert.equal(h.run('currentQuestion().id'),'Q1');
-  h.run(`jumpGroupMode('revival');`);
+  h.run(`state.sequence.splice(3,0,{type:'screen',screenId:'revival1-start'});jumpGroupMode('revival');`);
+  assert.equal(h.run('activeItem(state).screenId'),'revival1-start');
+  h.run('advancePresentation();');
   assert.equal(h.run('currentQuestion().id'),'Q2');
   assert.equal(h.run('state.runtime.returns.length'),0);
   h.run(`advancePresentation();`);
