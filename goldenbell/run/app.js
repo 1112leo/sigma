@@ -1,4 +1,4 @@
-import { defaultRuntime, validClockTime, validEventDate, normalizeRuntime, effectiveSequence, runtimePosition, activeItem, runtimeLog, roundProgress, eventClock } from './runtime.js?v=20260920-round-flow';
+import { defaultRuntime, validClockTime, validEventDate, normalizeRuntime, effectiveSequence, runtimePosition, activeItem, runtimeLog, roundProgress, eventClock } from './runtime.js?v=20260921-session';
 import { renderMath, richText, mathProjection } from './math.js?v=20260831-preparation5';
 import { parseQuestionImport, prepareQuestionImport, checkPreparation } from './preparation.js?v=20260831-preparation5';
 
@@ -208,6 +208,7 @@ function normalizePresentation(raw, next) {
     next.sequenceIndex = Math.max(0, position);
   } else next.sequenceIndex = next.sequence.length ? Math.round(clampNumber(raw.sequenceIndex, 0, next.sequence.length - 1, 0)) : -1;
   next.runtime = normalizeRuntime(raw.runtime, next.sequence.length);
+  if (next.runtime.run.active && next.runtime.run.signature !== JSON.stringify(next.sequence)) { next.runtime.run = defaultRuntime().run; next.runtime.mainResume = null; }
   // Retire old interventions without changing the user's configured slides or questions.
   const oldOverlay = next.runtime.overlay;
   if (oldOverlay) {
@@ -520,6 +521,13 @@ function publishPublicState({ broadcast = true, locked = false } = {}) {
 
 function saveState({ broadcast = true, locked = false } = {}) {
   if (!state) return;
+  if (state.runtime.run.active && state.runtime.run.signature !== JSON.stringify(state.sequence)) {
+    if (!confirm('행사 구성이 변경되어 진행을 종료하고 완료 기록을 초기화합니다. 저장할까요?')) return false;
+    state.runtime.run=defaultRuntime().run;
+    state.runtime.mainResume=null;
+    stopTimerIn(state);
+    state.answerVisible=false;
+  }
   if (persistenceBlocked) {
     toast('기존 데이터 보호 중입니다. 원본 JSON을 백업하고 호환되는 백업을 불러와주세요.');
     return false;
@@ -565,6 +573,13 @@ window.addEventListener('storage', event => {
 function update(mutator, options = {}) {
   const previous = structuredClone(state);
   mutator(state);
+  if (previous.runtime.run.active && JSON.stringify(previous.sequence) !== JSON.stringify(state.sequence)) {
+    if (!confirm('행사 구성을 변경하면 진행이 종료되고 완료 기록이 초기화됩니다. 변경할까요?')) { state=previous; render(); return false; }
+    state.runtime.run=defaultRuntime().run;
+    state.runtime.mainResume=null;
+    stopTimerIn(state);
+    state.answerVisible=false;
+  }
   const saved = saveState(options);
   if (!saved) state = previous;
   if (options.render !== false) render();
@@ -917,7 +932,7 @@ function renderLive() {
   const total = liveSequence.length;
   const position = total ? cursor + 1 : 0;
   const remaining = getTimerRemaining(state.timer);
-  return `<div class="live-layout"><section class="stack">
+  return `<div class="live-layout"><section class="stack"><article class="card"><div class="section-head"><strong>${state.runtime.run.active ? '행사 진행 중 · 완료 항목 자동 건너뛰기' : '슬라이드 모드 · 자유롭게 이동'}</strong><button class="btn primary" data-action="${state.runtime.run.active ? 'finish-run' : 'start-run'}">${state.runtime.run.active ? '진행 종료' : '진행 시작'}</button></div></article>
     <article class="card stage-card"><div class="section-head stage-heading"><div><p class="eyebrow">프로젝터 미리보기 · ${position} / ${total}</p><h2>${esc(question ? question.title : currentScreen().title)}</h2></div><button class="btn sm" data-action="open-screen">새 창으로 열기</button></div>
     <div class="stage-preview" aria-label="프로젝터 화면 미리보기">${renderPreview()}</div>
     ${question ? `<div class="primary-controls"><button class="btn timer-toggle" data-action="timer-toggle"><span>${state.timer.running ? '타이머 일시정지' : '타이머 시작'}</span><kbd>Space</kbd></button><button class="btn presentation-next" data-action="toggle-answer" ${question.answer ? '' : 'disabled'}><span>${state.answerVisible ? '정답 숨기기' : '정답 공개'}</span><kbd>A</kbd></button></div>` : ''}
@@ -972,11 +987,77 @@ function renderSlideSelector() {
   return `<article class="card mode-card"><h2>모드 변경</h2><div class="mode-grid">${Object.entries(navigationGroups).filter(([group]) => ['basic','hard'].includes(group)).map(([group,label]) => {
     const selected = question && questionNavigationGroup(question) === group;
     return `<button class="mode-button ${selected ? 'active' : ''}" data-group-mode="${group}" aria-pressed="${Boolean(selected)}" ${navigationItems(group).length ? '' : 'disabled'}>${label}</button>`;
-  }).join('')}</div><div class="mode-grid screen-modes">${specialRoundEntries().map(({index,label}) => `<button class="mode-button" data-special-round="${index}">${esc(label)}</button>`).join('')}</div><button class="btn" data-action="resume-main" ${state.runtime.mainResume ? '' : 'disabled'}>진행하던 본게임 재개</button><div class="mode-grid screen-modes">${Object.entries(legacyScreenIds).map(([mode,id]) => {
+  }).join('')}</div><div class="mode-grid screen-modes">${specialRoundEntries().map(({index,label}) => `<button class="mode-button" data-special-round="${index}">${esc(label)}</button>`).join('')}</div><button class="btn" data-action="resume-main" ${state.runtime.mainResume ? '' : 'disabled'}>${state.runtime.run.active && state.runtime.run.specialStart !== null ? '라운드 종료 · 본게임 재개' : '진행하던 본게임 재개'}</button>${state.runtime.run.active && state.runtime.run.specialStart !== null && !state.runtime.mainResume ? '<button class="btn" data-action="finish-round">라운드 종료 · 다음 구간</button>' : ''}<div class="mode-grid screen-modes">${Object.entries(legacyScreenIds).map(([mode,id]) => {
     const selected = active?.type === 'screen' && active.screenId === id;
     const available = state.sequence.some(item => item.type === 'screen' && item.screenId === id);
     return `<button class="mode-button ${selected ? 'active' : ''}" data-screen-mode="${mode}" aria-pressed="${selected}" ${available ? '' : 'disabled'}>${esc(screenModeMeta[mode].shortLabel)}</button>`;
   }).join('')}</div><p class="sub">선택한 위치부터 행사 구성 순서대로 진행합니다.</p></article>`;
+}
+
+function startRun() {
+  if (state.runtime.run.active || !state.sequence.length || !mayNavigate()) return;
+  update(next => {
+    stopTimerIn(next);
+    next.runtime.mainResume=null;
+    next.runtime.run={active:true,completed:[],specialStart:specialStartAt(next.sequenceIndex),signature:JSON.stringify(next.sequence)};
+    next.answerVisible=false;
+  });
+}
+
+function finishRun() {
+  if (!state.runtime.run.active || !confirm('진행을 종료하고 완료 기록을 초기화할까요? 슬라이드 구성은 유지됩니다.')) return;
+  update(next => { stopTimerIn(next); next.runtime.run=defaultRuntime().run; next.runtime.mainResume=null; next.answerVisible=false; });
+}
+
+function specialRangeEnd(start) {
+  const id=state.sequence[start]?.screenId;
+  const round={'revival1-start':'revival1','revival2-start':'revival2','final-start':'final'}[id];
+  if (!round) return start+1;
+  for(let index=start+1;index<state.sequence.length;index++) {
+    const item=state.sequence[index];
+    if (item.type === 'screen' && ['revival1-start','revival2-start','final-start','main-resume','main3-start','end','result','awards','opening','waiting','rules'].includes(item.screenId)) return index;
+    if (item.type === 'question') {
+      const q=state.questions.find(q=>q.id === item.questionId);
+      if (!q || (q.round !== round && questionNavigationGroup(q) !== (round === 'final' ? 'final' : 'revival'))) return index;
+      if (q.round && ['revival1','revival2','final'].includes(q.round) && q.round !== round) return index;
+    }
+  }
+  return state.sequence.length;
+}
+
+function specialStartAt(position) {
+  return specialRoundEntries().find(row => row.index <= position && position < specialRangeEnd(row.index))?.index ?? null;
+}
+
+function nextUncompleted(position) {
+  while(position < state.sequence.length && state.runtime.run.completed.includes(position)) position++;
+  return position;
+}
+
+function finishSpecialRound() {
+  const start=state.runtime.run.specialStart;
+  if (!state.runtime.run.active || start === null || !mayNavigate()) return;
+  const end=specialRangeEnd(start);
+  update(next => {
+    next.runtime.run.completed=[...new Set([...next.runtime.run.completed,...Array.from({length:end-start},(_,offset)=>start+offset)])];
+    const saved=next.runtime.mainResume;
+    next.runtime.mainResume=null;
+    next.runtime.run.specialStart=null;
+    if (saved && next.sequence[saved.index]?.questionId === saved.questionId) {
+      const target=nextUncompleted(saved.index);
+      if (target < next.sequence.length) {
+        activateSequence(next,target);
+        if (target === saved.index) next.timer.remaining=saved.remaining;
+        next.runtime.run.specialStart=specialStartAt(target);
+      } else stopTimerIn(next);
+    } else {
+      const target=nextUncompleted(end);
+      if (target < next.sequence.length) {
+        activateSequence(next,target);
+        next.runtime.run.specialStart=specialStartAt(target);
+      } else stopTimerIn(next);
+    }
+  });
 }
 
 function specialRoundEntries() {
@@ -990,10 +1071,12 @@ function startSpecialRound(index) {
     const q = currentQuestion();
     if (q && ['basic','hard'].includes(questionNavigationGroup(q))) next.runtime.mainResume = {index:next.sequenceIndex,questionId:q.id,remaining:getTimerRemaining(next.timer)};
     activateSequence(next,index);
+    if (next.runtime.run.active) next.runtime.run.specialStart=index;
   });
 }
 
 function resumeMain() {
+  if (state.runtime.run.active && state.runtime.run.specialStart !== null) return finishSpecialRound();
   const saved=state.runtime.mainResume;
   if (!saved || state.sequence[saved.index]?.questionId !== saved.questionId || !mayNavigate()) return;
   update(next => {
@@ -1083,6 +1166,7 @@ function goRuntimePosition(position, remember = false) {
     next.runtime.currentInsertionId = target.insertionId || null;
     next.runtime.overlay = null;
     activateCurrentItem(next);
+    if (next.runtime.run.active) next.runtime.run.specialStart = specialStartAt(next.sequenceIndex);
     runtimeLog(next, 'sequence-move', `${position + 1}번 항목으로 이동`);
     logCurrentItem(next);
   });
@@ -1520,6 +1604,9 @@ function handleAction(action) {
   const question = currentQuestion();
   if (action === 'batch-apply') return applyBatch();
   if (action === 'preflight') return runPreflight();
+  if (action === 'start-run') return startRun();
+  if (action === 'finish-run') return finishRun();
+  if (action === 'finish-round') return finishSpecialRound();
   if (action === 'resume-main') return resumeMain();
   if (action === 'slide-jump') return goRuntimePosition(Number(document.getElementById('slide-jump').value));
   if (action === 'clear-logs' && confirm('진행 로그를 초기화할까요? 예비문제 사용 기록과 무효 표시는 유지됩니다.')) return update(next => { next.runtime.logs = []; });
@@ -1537,7 +1624,7 @@ function handleAction(action) {
   if (action === 'lock') return lockConsole();
   if (action === 'export') return exportData();
   if (action === 'prev') return goRuntimePosition(runtimePosition(state) - 1);
-  if (action === 'next') return goRuntimePosition(runtimePosition(state) + 1);
+  if (action === 'next') return advancePresentation();
   if (action === 'next-step') return advancePresentation();
   if (action === 'toggle-answer') return toggleAnswer();
   if (action === 'reset-timer') return resetTimer();
@@ -1603,7 +1690,12 @@ function setScreenMode(mode) {
 }
 
 function advancePresentation() {
-  goRuntimePosition(runtimePosition(state) + 1);
+  if (!state.runtime.run.active) return goRuntimePosition(runtimePosition(state)+1);
+  const start=state.runtime.run.specialStart;
+  if (start !== null && nextUncompleted(state.sequenceIndex+1) >= specialRangeEnd(start)) return finishSpecialRound();
+  const target=nextUncompleted(state.sequenceIndex+1);
+  if (target >= state.sequence.length) return toast('남은 슬라이드가 없습니다. 진행 종료를 눌러 마치세요.');
+  goRuntimePosition(target);
 }
 
 function goQuestion(index) {
@@ -1624,7 +1716,10 @@ function toggleAnswer() {
   if (!state.answerVisible && state.timer.running && getTimerRemaining() > 0 && !confirm('아직 풀이 시간이 남아 있습니다. 타이머를 멈추고 정답을 공개할까요?')) return;
   update(next => {
     const opening = !next.answerVisible;
-    if (opening) stopTimerIn(next);
+    if (opening) {
+      stopTimerIn(next);
+      if (next.runtime.run.active && !next.runtime.run.completed.includes(next.sequenceIndex)) next.runtime.run.completed.push(next.sequenceIndex);
+    }
     next.answerVisible = opening;
     runtimeLog(next, opening ? 'answer-reveal' : 'answer-hide', `${question.id} 정답 ${opening ? '공개' : '숨김'}`);
   });

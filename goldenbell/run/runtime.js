@@ -1,6 +1,6 @@
 // Pure runtime helpers. The base sequence is never modified by live interventions.
 function defaultRuntime() {
-  return { mainResume: null, insertions: [], currentInsertionId: null, overlay: null, returns: [], invalidQuestions: [], reserveUses: [], logs: [], startedAt: null };
+  return { run: { active: false, completed: [], specialStart: null, signature: '' }, mainResume: null, insertions: [], currentInsertionId: null, overlay: null, returns: [], invalidQuestions: [], reserveUses: [], logs: [], startedAt: null };
 }
 
 function validClockTime(value) { return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value || ''); }
@@ -13,6 +13,7 @@ function validEventDate(value) {
 function normalizeRuntime(candidate, sequenceLength) {
   const raw = candidate && typeof candidate === 'object' ? candidate : {};
   const base = defaultRuntime();
+  if (raw.run?.active === true) base.run = { active: true, completed: Array.isArray(raw.run.completed) ? [...new Set(raw.run.completed.filter(index => Number.isInteger(index) && index >= 0 && index < sequenceLength))] : [], specialStart: Number.isInteger(raw.run.specialStart) && raw.run.specialStart >= 0 && raw.run.specialStart < sequenceLength ? raw.run.specialStart : null, signature: typeof raw.run.signature === 'string' ? raw.run.signature : '' };
   if (Number.isInteger(raw.mainResume?.index) && raw.mainResume.index >= 0 && raw.mainResume.index < sequenceLength) base.mainResume = { index: raw.mainResume.index, questionId: String(raw.mainResume.questionId || ''), remaining: Math.max(0, Math.min(600, Number(raw.mainResume.remaining) || 0)) };
   for (const field of ['insertions', 'returns', 'invalidQuestions', 'reserveUses', 'logs']) {
     if (raw[field] !== undefined && !Array.isArray(raw[field])) throw new Error('invalid-runtime');
