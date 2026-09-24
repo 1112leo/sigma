@@ -4,11 +4,20 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SIGMA | 천안오성고 수학동아리</title>
-  <meta name="description" content="천안오성고등학교 수학동아리 SIGMA" />
+  <title>시그마 | 천안오성고 수학동아리</title>
+  <meta name="description" content="천안오성고등학교 수학동아리 시그마" />
+  <link rel="preload" as="font" href="goldenbell/fonts/DNFBitBit-Regular.woff2" type="font/woff2" crossorigin>
   <style>
     * {
       box-sizing: border-box;
+    }
+
+    @font-face {
+      font-family: 'bitbit';
+      src: url('goldenbell/fonts/DNFBitBit-Regular.woff2') format('woff2');
+      font-weight: 400 900;
+      font-style: normal;
+      font-display: swap;
     }
 
     body {
@@ -16,9 +25,14 @@
       min-height: 100vh;
       background: #ffffff;
       color: #111111;
-      font-family: Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI",
-        "Noto Sans KR", sans-serif;
+      font-family: "bitbit", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      font-size: 15px;
+      line-height: 1.65;
       -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      font-synthesis: none;
+      word-break: keep-all;
+      overflow-wrap: break-word;
     }
 
     .container {
@@ -49,10 +63,9 @@
       width: 34px;
       height: 34px;
       border-radius: 11px;
-      background: #3568ed;
+      background: #172033;
       color: #ffffff;
-      font-family: Georgia, serif;
-      font-size: 21px;
+      font: 21px Georgia, serif;
       letter-spacing: 0;
     }
 

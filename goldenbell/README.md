@@ -6,7 +6,7 @@ preview both routes. No dependencies or build step are required for the landing.
 The `run/build.mjs` Site deployment packages both `/goldenbell/` and
 `/goldenbell/run/`. It reads the landing files from this directory in the main
 repository, or from `landing/` in the standalone Site source checkout. Keep that
-checkout's three landing assets synchronized before publishing. The Site root
+checkout's landing assets, including fonts and their license, synchronized before publishing. The Site root
 redirects to `/goldenbell/`; existing operator URLs remain unchanged.
 
 Run checks from the repository root:
@@ -23,6 +23,17 @@ confirm eligibility, venue, schedule, prize details, and the actual data handlin
 and consent requirements. Do not merely remove `disabled`.
 
 ## Hero artwork
+
+Typography uses the user's selected DNF BitBit original Regular WOFF2, downloaded
+unchanged from https://cdn.df.nexon.com/img/common/font/DNFBitBit-Regular.woff2.
+The file is self-hosted; no installed font or external CDN is needed at runtime.
+The same font file serves all visual weights without synthetic bolding.
+Copyright (c) 2022 NEOPLE Inc.; SIL Open Font License 1.1 and source attribution
+are included in `fonts/DNFBitBit-LICENSE.txt`. Official policy:
+https://df.nexon.com/data/font/dnfbitbit.
+
+Decorative glints use CSS geometry, are hidden from assistive technology, never
+intercept input, and stop animating when reduced motion is preferred.
 
 `hero-bell.png` was generated with the built-in image generation tool on
 2026-09-24, then copied into this project. It is decorative campaign artwork,
