@@ -860,7 +860,7 @@ function renderTab() {
 }
 
 function presentationFrame(payload) {
-  const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="./vendor/katex/katex.min.css"><link rel="stylesheet" href="./styles.css?v=20260924-editor"><style>html,body{margin:0;overflow:hidden}</style></head><body>${renderScreenMarkup(payload)}</body></html>`;
+  const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="./vendor/katex/katex.min.css"><link rel="stylesheet" href="./styles.css?v=20260924-id"><style>html,body{margin:0;overflow:hidden}</style></head><body>${renderScreenMarkup(payload)}</body></html>`;
   return `<iframe class="presentation-frame" title="프레젠테이션 화면" sandbox="allow-same-origin" tabindex="-1" srcdoc="${esc(html)}"></iframe>`;
 }
 
@@ -1693,7 +1693,7 @@ function renderModal() {
   ];
   return `<div class="modal-backdrop" data-action="close-backdrop"><section class="modal question-editor" role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <div class="section-head"><div><h2 id="modal-title">${question.id ? '문제 수정' : '문제 추가'}</h2></div><button class="btn sm ghost" data-action="close-modal" aria-label="닫기">닫기</button></div>
-    <form id="question-form" class="form-grid"><h3 class="form-section-title wide">문제</h3>
+    <form id="question-form" class="form-grid"><h3 class="form-section-title wide">문제</h3><div class="field wide"><label for="q-id">문제 ID</label><input id="q-id" maxlength="200" ${question.id ? 'required' : ''} placeholder="비워두면 자동 생성" value="${esc(modal.editedId ?? question.id ?? '')}"></div>
 
     ${selects.slice(0,2).map(([field, label, values]) => `<div class="field"><label for="q-${field}">${label}</label><select id="q-${field}">${selectOptions(values, question[field] ?? '')}</select></div>`).join('')}
     <div class="field"><label for="q-seconds">제한시간(초)</label><input id="q-seconds" type="number" min="1" max="600" step="1" required value="${esc(question.timeLimit ?? 30)}"></div>
@@ -1709,13 +1709,15 @@ function renderModal() {
     <details class="wide compact-details"><summary>진행자 메모</summary><div class="form-grid"><div class="field wide private-field"><label for="q-acceptedAnswers">인정 답안 (진행자 전용)</label><textarea id="q-acceptedAnswers" maxlength="2000">${esc(question.acceptedAnswers)}</textarea></div>
     <div class="field wide private-field"><label for="q-judgeNote">판정 메모 (진행자 전용)</label><textarea id="q-judgeNote" maxlength="2000">${esc(question.judgeNote)}</textarea></div>
     <div class="field wide private-field"><label for="q-note">진행 메모 (진행자 전용)</label><textarea id="q-note" maxlength="2000">${esc(question.note)}</textarea></div></div></details>
-<details class="wide compact-details"><summary>출제·검수 정보</summary><div class="form-grid">    <div class="field wide"><label for="q-id">고유 ID</label><input id="q-id" readonly value="${esc(question.id || '저장 시 자동 생성')}"></div>    <div class="field"><label for="q-author">출제자</label><input id="q-author" maxlength="100" value="${esc(question.author)}"></div>${selects.slice(2).map(([field, label, values]) => `<div class="field"><label for="q-${field}">${label}</label><select id="q-${field}">${selectOptions(values, question[field] ?? '')}</select></div>`).join('')}    <p class="field-help wide">작성 ${esc(question.createdAt)} · 수정 ${esc(question.updatedAt)}<br>사용 문제는 최종 확정 상태를 권장합니다. 초안도 저장할 수 있습니다.</p></div></details>
+<details class="wide compact-details"><summary>출제·검수 정보</summary><div class="form-grid">        <div class="field"><label for="q-author">출제자</label><input id="q-author" maxlength="100" value="${esc(question.author)}"></div>${selects.slice(2).map(([field, label, values]) => `<div class="field"><label for="q-${field}">${label}</label><select id="q-${field}">${selectOptions(values, question[field] ?? '')}</select></div>`).join('')}    <p class="field-help wide">작성 ${esc(question.createdAt)} · 수정 ${esc(question.updatedAt)}<br>사용 문제는 최종 확정 상태를 권장합니다. 초안도 저장할 수 있습니다.</p></div></details>
     <div class="wide modal-actions"><button type="button" class="btn" data-action="close-modal">취소</button><button type="submit" class="btn primary" ${modal.imageLoading ? 'disabled' : ''}>저장</button></div>
     </form></section></div>`;
 }
 
 function captureQuestionDraft() {
   if (!modal?.question) return;
+  const idInput = document.getElementById('q-id');
+  if (idInput) modal.editedId = idInput.value;
   for (const field of ['category', 'round', 'usageStatus', 'difficulty', 'reviewStatus', 'author', 'title', 'question', 'answer', 'explanation', 'acceptedAnswers', 'judgeNote', 'note']) {
     const input = document.getElementById(`q-${field}`);
     if (input) modal.question[field] = field === 'round' ? input.value || null : input.value;
@@ -2053,19 +2055,34 @@ function saveQuestion() {
   if (!modal.question.id && state.questions.length >= 500) return toast('문제는 최대 500개까지 저장할 수 있습니다.');
   captureQuestionDraft();
   const draft = modal.question;
+  const index = draft.id ? state.questions.findIndex(question => question.id === draft.id) : -1;
+  if (draft.id && index < 0) return toast('원래 문제가 없어졌습니다. 편집 창을 다시 열어주세요.');
+  const requestedId = String(modal.editedId ?? draft.id ?? '').trim();
+  if ((draft.id && !requestedId) || requestedId.length > 200) return toast('문제 ID는 1~200자로 입력해주세요.');
+  const id = requestedId || createId();
+  if (state.questions.some((question, position) => position !== index && (question.id === id || (draft.id && question.id === draft.id)))) return toast('이미 사용 중인 문제 ID입니다. 다른 ID를 입력해주세요.');
   const errors = validateQuestion(draft);
   if (errors.length) return toast(errors[0].message);
   const now = new Date().toISOString();
-  const data = migrateQuestion({ ...draft, id: draft.id || createId(), createdAt: draft.createdAt || now, updatedAt: now }, state.questions.length);
-  const index = state.questions.findIndex(question => question.id === data.id);
+  const data = migrateQuestion({ ...draft, id, createdAt: draft.createdAt || now, updatedAt: now }, state.questions.length);
   const previous = structuredClone(state);
   if (index >= 0) state.questions[index] = data;
   else state.questions.push(data);
+  if (draft.id && data.id !== draft.id) {
+    const rename = item => { if (item?.questionId === draft.id) item.questionId = data.id; };
+    state.sequence.forEach(rename);
+    rename(state.runtime.mainResume);
+    rename(state.runtime.overlay);
+    for (const field of ['insertions', 'invalidQuestions', 'reserveUses']) state.runtime[field].forEach(rename);
+    state.runtime.returns.forEach(position => rename(position.overlay));
+    // Renaming a key does not change slide order or invalidate completed positions.
+    if (state.runtime.run.active && previous.runtime.run.signature === JSON.stringify(previous.sequence)) state.runtime.run.signature = JSON.stringify(state.sequence);
+  }
   if (totalImageDataLength(state.questions) > MAX_TOTAL_IMAGE_DATA_LENGTH) {
     state = previous;
     return toast('전체 사진 용량이 너무 큽니다. 사진을 줄인 뒤 다시 저장해주세요.');
   }
-  if (currentQuestion()?.id === data.id && !state.timer.running) state.timer.remaining = data.timeLimit;
+  if (currentQuestion()?.id === data.id && !state.timer.running && previous.questions[index]?.timeLimit !== data.timeLimit) state.timer.remaining = data.timeLimit;
   if (!saveState()) { state = previous; return; }
   modal = null;
   render();

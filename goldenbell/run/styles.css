@@ -687,7 +687,6 @@ kbd { min-width: 23px; padding: 3px 6px; border: 1px solid #536985; border-botto
 .sequence-item.drop-before::before, .sequence-item.drop-after::after { content:''; position:absolute; z-index:3; left:0; right:0; height:3px; border-radius:3px; background:#73b7ff; box-shadow:0 0 0 1px #172d49; pointer-events:none; }
 .sequence-item.drop-before::before { top:-8px; }
 .sequence-item.drop-after::after { bottom:-8px; }
-.sequence-item.drop-before, .sequence-item.drop-after { border-color:#639cd5; }
 .sequence-help { margin:12px 0 0; }
 .sequence-sidebar { position:sticky; top:18px; }
 .sequence-sidebar .form-grid { margin-top:18px; }

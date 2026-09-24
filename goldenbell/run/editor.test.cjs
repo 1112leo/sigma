@@ -39,20 +39,21 @@ test('filtered reorder and deletion retain current question ID, answer state and
   assert.deepEqual(h.json('state.questions.map(q=>q.order)'),[1,2]);
 });
 
-test('blank private fields save, immutable ID, invalid time rejected, storage failures retain draft', () => {
+test('blank private fields save, edited ID, invalid time rejected, storage failures retain draft', () => {
   const h=fixture();
   h.run(`openQuestion('Q1');`);
   for (const field of ['author','acceptedAnswers','judgeNote','note']) h.fields[`q-${field}`]={value:''};
-  h.fields['q-id']={value:'SHOULD-NOT-CHANGE'};
+  h.fields['q-id']={value:'RENAMED'};
   h.fields['q-seconds']={value:'0'};
   h.run('saveQuestion();');
   assert.equal(h.run('state.questions[0].timeLimit'),30);
   assert.equal(h.run('modal.question.id'),'Q1');
   h.fields['q-seconds'].value='48';
   h.run('saveQuestion(); state=loadPrivateState();');
-  assert.equal(h.run('state.questions[0].id'),'Q1');
+  assert.equal(h.run('state.questions[0].id'),'RENAMED');
+  assert.equal(h.run('state.sequence[0].questionId'),'RENAMED');
   for (const field of ['author','acceptedAnswers','judgeNote','note']) assert.equal(h.run(`state.questions[0].${field}`),'');
-  h.run(`openQuestion('Q1'); localStorage.setItem=()=>{throw new Error('quota')};`);
+  h.run(`openQuestion('RENAMED'); localStorage.setItem=()=>{throw new Error('quota')};`);
   h.fields['q-seconds'].value='59';
   h.run('saveQuestion();');
   assert.equal(h.run('state.questions[0].timeLimit'),48);
