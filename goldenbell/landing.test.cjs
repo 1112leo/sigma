@@ -13,13 +13,14 @@ test('event page uses the agreed date, tentative hours and benefits', () => {
   assert.equal(new Date('2026-10-30T12:00:00+09:00').getUTCDay(), 5);
 });
 
-test('registration is a disabled, script-free mockup, not a submission form', () => {
+test('registration stays disabled; the only script is decorative scroll motion', () => {
   const form = html.match(/<form\b[^>]*>[\s\S]*?<\/form>/)[0];
   assert.match(form, /aria-describedby="form-notice"/);
   assert.match(form, /<fieldset disabled>[\s\S]*<\/fieldset>/);
   assert.match(form, /<button[^>]*type="button" disabled/);
   assert.doesNotMatch(form, /\b(?:action|name|formaction)\s*=/);
-  assert.doesNotMatch(html, /<script\b|\bon\w+\s*=/i);
+  assert.doesNotMatch(form, /<script\b|\bon\w+\s*=/i);
+  assert.deepEqual([...html.matchAll(/<script\b[^>]*src="([^"]+)"/g)].map(match => match[1]), ['reveal.js?v=20260925']);
   assert.match(html, /지금은 입력하거나 접수할 수 없어요/);
 });
 

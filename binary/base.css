@@ -43,6 +43,12 @@ a {
     justify-content: space-between;
 }
 
+.logo-mark {
+    font: 20px/1 Georgia, serif;
+    color: var(--gold);
+    letter-spacing: 0
+}
+
 .brand {
     font-size: 19px;
     font-weight: 900;
