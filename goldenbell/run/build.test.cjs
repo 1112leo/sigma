@@ -17,6 +17,20 @@ test('production worker smoke: routes, all nested modules/fonts/MIME and local-o
   assert.equal((await fetchAsset('vendor/katex/fonts/KaTeX_Main-Regular.woff2')).headers.get('content-type'),'font/woff2');
   for (const path of ['/goldenbell/test/','/goldenbell/run/private.json','/elsewhere']) assert.equal((await worker.fetch(new Request(`https://sigma.example${path}`))).status,404);
   assert.equal((await worker.fetch(new Request('https://sigma.example/'))).status,302);
+  for (const [route,target] of [['/','/goldenbell/'],['/goldenbell','/goldenbell/'],['/goldenbell/run','/goldenbell/run/']]) {
+    const response = await worker.fetch(new Request(`https://sigma.example${route}`));
+    assert.equal(response.headers.get('location'), `https://sigma.example${target}`);
+  }
+  const landingRoot = fs.existsSync(`${__dirname}/landing/index.html`) ? `${__dirname}/landing` : `${__dirname}/..`;
+  for (const name of ['index.html','goldenbell.css','hero-bell.png']) {
+    const response = await worker.fetch(new Request(`https://sigma.example/goldenbell/${name}`));
+    assert.equal(response.status,200,name);
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()),fs.readFileSync(`${landingRoot}/${name}`));
+  }
+  const landing = await worker.fetch(new Request('https://sigma.example/goldenbell/'));
+  assert.equal(landing.headers.get('cache-control'),'no-store');
+  assert.match(await landing.text(), /이번엔 네가/);
+  for (const name of ['README.md','landing.test.cjs','run/landing/index.html']) assert.equal((await worker.fetch(new Request(`https://sigma.example/goldenbell/${name}`))).status,404);
   const html=fs.readFileSync(`${__dirname}/index.html`,'utf8');
   for (const match of html.matchAll(/(?:src|href)="([^"#]+)"/g)) {
     assert.ok(match[1].startsWith('./'),match[1]);

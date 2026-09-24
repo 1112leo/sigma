@@ -3,8 +3,11 @@
 The existing static `/goldenbell/` page is independent from the operator app in
 `run/`. Serve the repository root (for example `python3 -m http.server 8082`) to
 preview both routes. No dependencies or build step are required for the landing.
-The separate `run/build.mjs` Site deployment currently packages the operator app
-only; it does not publish this landing page.
+The `run/build.mjs` Site deployment packages both `/goldenbell/` and
+`/goldenbell/run/`. It reads the landing files from this directory in the main
+repository, or from `landing/` in the standalone Site source checkout. Keep that
+checkout's three landing assets synchronized before publishing. The Site root
+redirects to `/goldenbell/`; existing operator URLs remain unchanged.
 
 Run checks from the repository root:
 
