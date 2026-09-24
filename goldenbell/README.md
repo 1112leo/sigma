@@ -1,0 +1,30 @@
+# SIGMA Golden Bell landing page
+
+The existing static `/goldenbell/` page is independent from the operator app in
+`run/`. Serve the repository root (for example `python3 -m http.server 8082`) to
+preview both routes. No dependencies or build step are required for the landing.
+The separate `run/build.mjs` Site deployment currently packages the operator app
+only; it does not publish this landing page.
+
+Run checks from the repository root:
+
+```sh
+node --test goldenbell/landing.test.cjs goldenbell/run/*.test.cjs
+```
+
+## Registration
+
+The form is deliberately disabled: no submission endpoint, JavaScript, storage,
+analytics or collection of applicant information. Before opening registration,
+confirm eligibility, venue, schedule, prize details, and the actual data handling
+and consent requirements. Do not merely remove `disabled`.
+
+## Hero artwork
+
+`hero-bell.png` was generated with the built-in image generation tool on
+2026-09-24, then copied into this project. It is decorative campaign artwork,
+not a photograph of an actual event or prize. No third-party logos are used.
+
+Final prompt:
+
+> Use case: ads-marketing. Asset type: hero artwork for a Korean high-school mathematics Golden Bell event landing page, not a website mockup. Create one exquisite cinematic product render: a large elegant polished warm-gold handbell tilted diagonally, short dark handle, floating above a matte midnight navy surface, with three small restrained gold confetti ribbons around it, subtle soft warm spotlight, beautiful specular reflections and deep shadows. Sophisticated youthful editorial art direction, premium school festival campaign. Bell centered in a square 1024x1024 composition with generous dark negative space at the edges. Background almost uniform deep ink navy #101b31 to blend into web background, subtly illuminated near bell. No people, no lettering, no digits, no logos, no watermark, no stage, no podium, no excessive glitter. Strong clear silhouette, tactile brushed and polished metal.

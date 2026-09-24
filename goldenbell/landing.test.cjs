@@ -1,0 +1,46 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+
+test('event page uses the agreed date, tentative hours and benefits', () => {
+  assert.match(html, /datetime="2026-10-30"/);
+  assert.match(html, /16:00–18:00 예정/);
+  assert.match(html, /이삭토스트/);
+  assert.match(html, /문화상품권/);
+  assert.match(html, /상품 금액과 시상 기준.*추후 안내/);
+  assert.equal(new Date('2026-10-30T12:00:00+09:00').getUTCDay(), 5);
+});
+
+test('registration is a disabled, script-free mockup, not a submission form', () => {
+  const form = html.match(/<form\b[^>]*>[\s\S]*?<\/form>/)[0];
+  assert.match(form, /aria-describedby="form-notice"/);
+  assert.match(form, /<fieldset disabled>[\s\S]*<\/fieldset>/);
+  assert.match(form, /<button[^>]*type="button" disabled/);
+  assert.doesNotMatch(form, /\b(?:action|name|formaction)\s*=/);
+  assert.doesNotMatch(html, /<script\b|\bon\w+\s*=/i);
+  assert.match(html, /지금은 입력하거나 접수할 수 없어요/);
+});
+
+test('all internal anchors and asset references resolve; operator link is retained', () => {
+  const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
+  assert.equal(new Set(ids).size, ids.length, 'IDs must be unique');
+  for (const [, id] of html.matchAll(/href="#([^"]+)"/g)) assert.ok(ids.includes(id), id);
+  for (const [, url] of html.matchAll(/(?:href|src)="([^"#][^"]*)"/g)) {
+    const file = url.split('?')[0];
+    if (file.startsWith('/')) continue;
+    assert.ok(fs.existsSync(path.join(__dirname, file)), file);
+  }
+  assert.match(html, /id="temporary-run-link" href="\/goldenbell\/run\/"/);
+  assert.ok(fs.existsSync(path.join(__dirname, 'run/index.html')));
+});
+
+test('page has labeled inputs, heading structure and reduced-motion support', () => {
+  assert.equal((html.match(/<h1\b/g) || []).length, 1);
+  assert.match(html, /class="skip-link"/);
+  assert.match(html, /<label for="applicant-name">/);
+  assert.match(html, /<label for="applicant-number">/);
+  assert.match(html, /<img[^>]*alt="[^"]+"/);
+  assert.match(fs.readFileSync(path.join(__dirname, 'goldenbell.css'), 'utf8'), /prefers-reduced-motion:reduce/);
+});
