@@ -543,6 +543,37 @@ kbd { min-width: 23px; padding: 3px 6px; border: 1px solid #536985; border-botto
 .screen-answer-body > p { margin: 14px 0 0; color: #e2e8f0; font-size: 24px; line-height: 1.5; word-break: keep-all; overflow-wrap: anywhere; }
 .screen-answer-body .katex-display { margin: .25em 0; }
 .answer-open .screen-timer-copy { opacity: .5; }
+
+/* Answer reveal is one presentation slide, not a panel inside the question. */
+.answer-open.screen-question-mode { background: radial-gradient(ellipse at 50% 40%, #203047 0%, #101c30 48%, #080f1c 100%); }
+.answer-open .screen-question-wrap { padding: 12px 56px 24px; }
+.answer-open .screen-answer { width: 100%; height: 100%; padding: 28px 40px; border: 0; border-radius: 0; background: none; box-shadow: none; }
+.screen-answer-body > .answer-label { display: inline-block; padding: 8px 20px; border: 1px solid #bca35d; border-radius: 999px; color: #efd896; font-size: 19px; letter-spacing: .15em; }
+.screen-answer-body > .answer-question-title { margin: 22px 0 0; font-size: 23px; color: #a8b8cc; font-weight: 600; }
+.screen-answer-body > strong { margin: 22px 0 0; color: #ffe49a; font-size: 132px; font-weight: 850; line-height: 1.16; letter-spacing: -.035em; }
+.screen-answer-body > strong.medium { font-size: 78px; }
+.screen-answer-body > strong.long { font-size: 52px; }
+.answer-explanation { max-width: 940px; margin: 34px auto 0; padding-top: 22px; border-top: 1px solid #526077; }
+.answer-explanation > span { display: block; color: #b4c5dd; font-size: 17px; font-weight: 800; letter-spacing: .12em; }
+.answer-explanation > p { margin: 10px 0 0; color: #f0f3f8; font-size: 28px; line-height: 1.5; word-break: keep-all; overflow-wrap: anywhere; }
+.session-bar { border-left: 3px solid #8495ae; }
+.session-bar.is-live { border-left-color: var(--gold); }
+.session-bar .section-head { margin: 0; }
+.session-bar strong { font-size: 15px; line-height: 1.5; }
+.stage-state { display: inline-block; margin-top: 8px; color: #b9c9df; font-size: 14px; }
+.operator-hint { margin: 14px 0; color: #bdcadc; font-size: 14px; line-height: 1.5; }
+.next-destination { display: flex; align-items: center; justify-content: space-between; gap: 14px; text-align: left; overflow-wrap: anywhere; }
+.next-destination > span { min-width: 0; }
+.round-button, .round-exit { display: flex; flex-direction: column; gap: 7px; height: auto; }
+.round-button small { color: #aebed3; font-size: 12px; font-weight: 500; }
+.round-button.completed { border-style: dashed; }
+.round-button.completed small { color: #b9d6c4; }
+.round-exit { width: 100%; margin-top: 14px; border-color: #aa975f; text-align: left; align-items: flex-start; }
+.round-exit small { font-size: 13px; color: #c7d2e2; white-space: normal; }
+.operator-guide summary { cursor: pointer; font-size: 14px; }
+.operator-guide ol { padding-left: 22px; }
+.operator-guide li, .operator-guide p { font-size: 14px; line-height: 1.7; color: #c7d2e2; }
+@media (max-width: 600px) { .session-bar .section-head { flex-wrap: wrap; gap: 12px; } }
 .screen-footer { position: relative; z-index: 2; display: flex; align-items: flex-end; justify-content: space-between; gap: 2vw; }
 .screen-timer-copy { display: flex; align-items: baseline; gap: 1vw; }
 .screen-timer-copy > span { color: #b6c5d8; font-size: clamp(14px, 1.05vw, 21px); font-weight: 850; }
