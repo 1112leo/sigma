@@ -44,3 +44,11 @@ test('page has labeled inputs, heading structure and reduced-motion support', ()
   assert.match(html, /<img[^>]*alt="[^"]+"/);
   assert.match(fs.readFileSync(path.join(__dirname, 'goldenbell.css'), 'utf8'), /prefers-reduced-motion:reduce/);
 });
+
+test('refined landing keeps venue consistent and removes emoji-dependent decoration', () => {
+  assert.doesNotMatch(html, /✳|small-star|THE NEXT BELL|장소<\/dt><dd>추후/);
+  assert.match(html, /<dt>장소<\/dt><dd>체육관<\/dd>/);
+  assert.match(html, /체육관에서 진행합니다/);
+  assert.match(html, /혜택과 상품은 아직 확정 전/);
+  assert.match(html, /구글폼으로 받을 예정/);
+});

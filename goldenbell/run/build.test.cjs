@@ -29,7 +29,7 @@ test('production worker smoke: routes, all nested modules/fonts/MIME and local-o
   }
   const landing = await worker.fetch(new Request('https://sigma.example/goldenbell/'));
   assert.equal(landing.headers.get('cache-control'),'no-store');
-  assert.match(await landing.text(), /이번엔 네가/);
+  assert.match(await landing.text(), /2026 수학 골든벨/);
   for (const name of ['README.md','landing.test.cjs','run/landing/index.html']) assert.equal((await worker.fetch(new Request(`https://sigma.example/goldenbell/${name}`))).status,404);
   const html=fs.readFileSync(`${__dirname}/index.html`,'utf8');
   for (const match of html.matchAll(/(?:src|href)="([^"#]+)"/g)) {
