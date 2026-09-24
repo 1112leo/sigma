@@ -20,7 +20,7 @@ test('registration stays disabled; the only script is decorative scroll motion',
   assert.match(form, /<button[^>]*type="button" disabled/);
   assert.doesNotMatch(form, /\b(?:action|name|formaction)\s*=/);
   assert.doesNotMatch(form, /<script\b|\bon\w+\s*=/i);
-  assert.deepEqual([...html.matchAll(/<script\b[^>]*src="([^"]+)"/g)].map(match => match[1]), ['reveal.js?v=20260925']);
+  assert.deepEqual([...html.matchAll(/<script\b[^>]*src="([^"]+)"/g)].map(match => match[1]), ['reveal.js?v=20260925-smooth2']);
   assert.match(html, /지금은 입력하거나 접수할 수 없어요/);
 });
 

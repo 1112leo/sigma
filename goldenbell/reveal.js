@@ -6,20 +6,27 @@
   const items = [...document.querySelectorAll('.event-strip, .about-body > *, .benefits-section .section-heading, .benefit-card, .benefit-note, .apply-copy, .form-card, .questions-section > *')];
   const active = new Map();
   const observer = new IntersectionObserver(entries => {
-    entries.filter(entry => entry.isIntersecting).forEach((entry, index) => {
+    entries.filter(entry => entry.isIntersecting).forEach(entry => {
       observer.unobserve(entry.target);
-      if (motion.matches || entry.boundingClientRect.bottom <= 0) return;
-      const animation = entry.target.animate([
-        { opacity: 0, transform: 'translateY(22px)' },
-        { opacity: 1, transform: 'translateY(0)' },
-      ], { duration: 580, delay: Math.min(index, 2) * 80, easing: 'cubic-bezier(.22, 1, .36, 1)', fill: 'backwards' });
-      active.set(entry.target, animation);
-      animation.onfinish = animation.oncancel = () => active.delete(entry.target);
+      const animation = active.get(entry.target);
+      if (motion.matches || entry.boundingClientRect.bottom <= 0) animation?.cancel();
+      else animation?.play();
     });
-  }, { threshold: 0, rootMargin: '0px 0px -16px 0px' });
+  }, { threshold: 0, rootMargin: '0px 0px 48px 0px' });
 
-  // Do not animate the initial viewport or content already passed on anchor navigation.
-  items.filter(item => item.getBoundingClientRect().top >= innerHeight).forEach(item => observer.observe(item));
+  // Prepare below-fold items BEFORE they enter view: never flash visible content to zero.
+  items.filter(item => item.getBoundingClientRect().top >= innerHeight + 48).forEach(item => {
+    const animation = item.animate([
+      { opacity: 0, transform: 'translateY(12px)' },
+      { opacity: 1, transform: 'translateY(0)' },
+    ], { duration: 650, easing: 'cubic-bezier(.25, .65, .35, 1)', fill: 'both' });
+    animation.pause();
+    animation.currentTime = 0;
+    active.set(item, animation);
+    animation.oncancel = () => active.delete(item);
+    animation.onfinish = () => animation.cancel();
+    observer.observe(item);
+  });
   document.addEventListener('focusin', event => {
     for (const item of items) {
       if (item.contains(event.target)) {
@@ -28,10 +35,14 @@
       }
     }
   });
-  motion.addEventListener('change', () => {
-    if (!motion.matches) return;
+  const showAll = () => {
     observer.disconnect();
     for (const animation of active.values()) animation.cancel();
     active.clear();
+  };
+  motion.addEventListener('change', () => {
+    if (motion.matches) showAll();
   });
+  window.addEventListener('beforeprint', showAll);
+  window.addEventListener('hashchange', showAll);
 })();

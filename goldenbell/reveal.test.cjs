@@ -12,7 +12,7 @@ function setup({ reduced = false, supported = true } = {}) {
     getBoundingClientRect: () => ({ top }),
     contains(target) { return target === this; },
     animate(frames, options) {
-      const animation = { cancel() { this.cancelled = true; this.oncancel?.(); } };
+      const animation = { pause() { this.paused = true; }, play() { this.played = true; }, cancel() { this.cancelled = true; this.oncancel?.(); } };
       calls.push({ frames, options, animation });
       return animation;
     },
@@ -25,7 +25,7 @@ function setup({ reduced = false, supported = true } = {}) {
     disconnect() { observed.clear(); disconnected = true; }
   }
   vm.runInNewContext(script, {
-    matchMedia: () => motion, window: supported ? { IntersectionObserver: Observer } : {},
+    matchMedia: () => motion, window: supported ? { IntersectionObserver: Observer, addEventListener() {} } : {},
     IntersectionObserver: Observer, Element: { prototype: { animate() {} } }, innerHeight: 800,
     document: { querySelectorAll: () => items, addEventListener(type, fn) { focus = fn; } },
   });
@@ -39,11 +39,12 @@ function setup({ reduced = false, supported = true } = {}) {
 test('scroll reveal observes only below-fold content and stops observing after entrance', () => {
   const state = setup();
   assert.equal(state.observed.size, 2);
+  assert.ok(state.calls.every(call => call.animation.paused && call.animation.currentTime === 0));
   state.enter();
   assert.equal(state.observed.size, 0);
   assert.equal(state.calls.length, 2);
-  assert.equal(state.calls[1].options.delay, 80);
-  assert.equal(state.calls[0].options.fill, 'backwards');
+  assert.ok(state.calls.every(call => call.animation.played));
+  assert.equal(state.calls[0].options.fill, 'both');
 });
 
 test('reduced motion and unsupported browsers leave content unchanged', () => {

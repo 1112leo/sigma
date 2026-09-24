@@ -6,8 +6,8 @@
   font-display: swap;
 }
 
-/* Personality in headings and actions; explanations keep the existing reading font. */
-h1, h2, h3, .brand, .btn, button, .deck > b, .step > b, .concept-card .num {
+/* One reading voice throughout; only the numbers printed on cards stay plain. */
+body, input, select, textarea, button, h1, h2, h3, .brand, .btn {
   font-family: 'DNF BitBit', 'Apple SD Gothic Neo', sans-serif;
   font-weight: 400;
   font-synthesis: none;
@@ -15,22 +15,23 @@ h1, h2, h3, .brand, .btn, button, .deck > b, .step > b, .concept-card .num {
 }
 
 .hero h1, .page-head h1, .sub-hero h1, .quiz-card h1 {
-  line-height: 1.35;
-  letter-spacing: -.025em;
+  font-size: clamp(28px, 3.2vw, 40px);
+  line-height: 1.48;
+  letter-spacing: 0;
 }
 
-.hero h1 { font-size: clamp(34px, 4.5vw, 54px); }
+body { line-height: 1.85; }
+.hero p, .page-head p, .sub-hero p { font-size: 16px; line-height: 1.9; }
 .btn, button { line-height: 1.6; }
 
-/* Positional notation and calculated values must stay aligned, including inputs. */
-.nums, .number-grid, .magic-card-number, .bits, .bit-row, .place-strip,
-.digit-column, .equation, .clean-equation, .formula-expression, .formula-total,
-.place-value, .value, .sum, .quiz-card-chip, .card-sum-flow, .quiz-form input {
+/* Card numbers such as the large 32 are intentionally not BitBit. */
+.deck > b, .deck > small, .deck > span, .nums, .number-grid,
+.magic-card-number, .place-value {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0;
 }
 
 @media (max-width: 390px) {
-  .hero h1 { font-size: 32px; }
+  .hero h1, .page-head h1, .sub-hero h1, .quiz-card h1 { font-size: 27px; }
 }
