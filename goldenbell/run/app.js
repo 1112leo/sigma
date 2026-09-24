@@ -972,7 +972,7 @@ function renderLive() {
   const position = total ? cursor + 1 : 0;
   const remaining = getTimerRemaining(state.timer);
   const nextAction=presentationNextAction();
-  return `<div class="live-layout"><section class="stack"><article class="card session-bar ${state.runtime.run.active ? 'is-live' : ''}"><div class="section-head"><div><p class="eyebrow">${state.runtime.run.active ? '행사 진행' : '미리보기 · 연습'}</p><strong>${state.runtime.run.active ? '완료한 문제와 라운드는 자동으로 건너뜁니다' : '기록 없이 슬라이드 순서대로 이동합니다'}</strong></div><button class="btn primary" data-action="${state.runtime.run.active ? 'finish-run' : 'start-run'}">${state.runtime.run.active ? '진행 종료' : '이 위치에서 진행 시작'}</button></div></article>
+  return `<div class="live-layout"><section class="stack"><article class="card session-bar ${state.runtime.run.active ? 'is-live' : ''}"><div class="section-head"><strong>${state.runtime.run.active ? '진행 중' : '미리보기 · 연습'}</strong><button class="btn primary" data-action="${state.runtime.run.active ? 'finish-run' : 'start-run'}">${state.runtime.run.active ? '진행 종료' : '이 위치에서 진행 시작'}</button></div></article>
     <article class="card stage-card"><div class="section-head stage-heading"><div><p class="eyebrow">프로젝터 미리보기 · ${position} / ${total}</p><h2>${esc(question ? question.title : currentScreen().title)}</h2><span class="stage-state">${question ? state.answerVisible ? '정답 공개 중' : '문제 화면' : '안내 화면'}</span></div><button class="btn sm" data-action="open-screen">새 창으로 열기</button></div>
     <div class="stage-preview" aria-label="프로젝터 화면 미리보기">${renderPreview()}</div><p class="operator-hint">${operatorHint()}</p>
     ${question ? `<div class="primary-controls"><button class="btn timer-toggle" data-action="timer-toggle" ${state.answerVisible ? 'disabled' : ''}><span>${state.timer.running ? '타이머 일시정지' : '타이머 시작'}</span><kbd>Space</kbd></button><button class="btn presentation-next" data-action="toggle-answer" ${question.answer ? '' : 'disabled'}><span>${state.answerVisible ? '문제로 돌아가기' : '정답 공개'}</span><kbd>A</kbd></button></div>` : ''}
@@ -1030,7 +1030,7 @@ function renderSlideSelector() {
   }).join('')}</div><div class="mode-grid screen-modes">${specialRoundEntries().map(({index,label}) => {
     const completed=state.runtime.run.active && state.runtime.run.completed.includes(index);
     const current=specialStartAt(state.sequenceIndex) === index;
-    return `<button class="mode-button round-button ${current ? 'active' : ''} ${completed ? 'completed' : ''}" data-special-round="${index}" aria-pressed="${current}"><span>${esc(label)}</span><small>${completed ? '완료 · 다시 보기' : current ? '현재 라운드' : '시작 안내로 이동'}</small></button>`;
+    return `<button class="mode-button round-button ${current ? 'active' : ''} ${completed ? 'completed' : ''}" data-special-round="${index}" aria-pressed="${current}"><span>${esc(label)}</span>${completed || current ? `<small>${completed ? '완료 · 다시 보기' : '현재 라운드'}</small>` : ''}</button>`;
   }).join('')}</div>${renderRoundExit()}<div class="mode-grid screen-modes">${Object.entries(legacyScreenIds).map(([mode,id]) => {
     const selected = active?.type === 'screen' && active.screenId === id;
     const available = state.sequence.some(item => item.type === 'screen' && item.screenId === id);
