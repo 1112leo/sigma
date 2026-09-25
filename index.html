@@ -23,11 +23,11 @@
     body {
       margin: 0;
       min-height: 100vh;
-      background: #ffffff;
-      color: #111111;
+      background: #f4f6fa;
+      color: #172033;
       font-family: "bitbit", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
-      font-size: 15px;
-      line-height: 1.65;
+      font-size: 16px;
+      line-height: 1.7;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
       font-synthesis: none;
@@ -36,16 +36,16 @@
     }
 
     .container {
-      width: min(920px, calc(100% - 40px));
+      width: min(1080px, calc(100% - 36px));
       margin: 0 auto;
     }
 
     header {
-      height: 72px;
+      height: 76px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      border-bottom: 1px solid #eeeeee;
+      border-bottom: 1px solid #dfe4ee;
     }
 
     .logo {
@@ -71,14 +71,15 @@
 
     .school {
       font-size: 13px;
-      color: #777777;
+      color: #56617a;
+      font-size: 14px;
     }
 
     main {
-      min-height: calc(100vh - 132px);
+      min-height: calc(100svh - 136px);
       display: flex;
       align-items: center;
-      padding: 72px 0;
+      padding: 64px 0 76px;
     }
 
     .hero {
@@ -87,80 +88,99 @@
 
     h1 {
       margin: 0;
-      font-size: clamp(52px, 10vw, 88px);
+      font-size: clamp(60px, 9vw, 94px);
       line-height: 1;
-      letter-spacing: -0.05em;
+      letter-spacing: -0.03em;
       font-weight: 800;
       color: #172033;
     }
 
     .description {
-      margin: 24px 0 0;
-      font-size: 17px;
-      line-height: 1.7;
-      color: #666666;
+      max-width: 38em;
+      margin: 20px 0 0;
+      font-size: 19px;
+      line-height: 1.8;
+      color: #46536b;
       word-break: keep-all;
     }
 
     .links {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
-      gap: 14px;
-      margin-top: 44px;
+      gap: 16px;
+      margin-top: 36px;
     }
 
     .link-card {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      min-height: 110px;
-      padding: 0 24px;
-      border: 1px solid #dddddd;
-      border-radius: 14px;
-      color: #111111;
+      min-height: 128px;
+      padding: 22px 26px;
+      border: 1px solid #dfe4ee;
+      border-radius: 18px;
+      color: #172033;
       text-decoration: none;
-      transition: 0.18s ease;
+      transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
       background: #ffffff;
+      box-shadow: 0 8px 24px rgba(23, 32, 51, 0.04);
     }
 
     .link-card:hover {
       border-color: #3568ed;
-      transform: translateY(-2px);
-      box-shadow: 0 10px 24px rgba(53, 104, 237, 0.08);
+      transform: translateY(-3px);
+      box-shadow: 0 16px 32px rgba(23, 32, 51, 0.09);
+    }
+
+    .link-card:focus-visible {
+      outline: 3px solid rgba(53, 104, 237, 0.38);
+      outline-offset: 3px;
     }
 
     .link-title {
-      font-size: 19px;
+      font-size: 20px;
       font-weight: 700;
     }
 
     .link-subtitle {
       margin-top: 5px;
-      font-size: 13px;
-      color: #888888;
+      font-size: 14px;
+      color: #56617a;
     }
 
     .arrow {
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      background: #eef2ff;
       font-size: 22px;
       color: #3568ed;
+    }
+
+    .link-card:nth-child(2) .arrow {
+      background: #fff3c4;
+      color: #9a7310;
     }
 
     footer {
       height: 60px;
       display: flex;
       align-items: center;
-      border-top: 1px solid #eeeeee;
-      color: #999999;
-      font-size: 12px;
+      border-top: 1px solid #dfe4ee;
+      color: #56617a;
+      font-size: 13px;
     }
 
     @media (max-width: 640px) {
       .container {
-        width: min(100% - 28px, 920px);
+        width: min(100% - 28px, 1080px);
       }
 
       header {
-        height: 64px;
+        height: 68px;
       }
 
       .school {
@@ -168,8 +188,8 @@
       }
 
       main {
-        min-height: calc(100vh - 120px);
-        padding: 48px 0;
+        min-height: calc(100svh - 128px);
+        padding: 44px 0 56px;
       }
 
       .links {
@@ -177,7 +197,25 @@
       }
 
       .link-card {
-        min-height: 96px;
+        min-height: 108px;
+        padding: 18px 20px;
+      }
+
+      .description {
+        font-size: 17px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+      }
+
+      .link-card:hover {
+        transform: none;
       }
     }
   </style>
@@ -194,15 +232,13 @@
       <section class="hero">
         <h1>시그마</h1>
 
-        <p class="description">
-          천안오성고등학교 수학동아리 시그마<br />
-        </p>
+        <p class="description">수학을 직접 체험하고, 함께 도전하는 시그마의 활동을 소개합니다.</p>
 
         <div class="links">
           <a href="/binary/" class="link-card">
             <div>
               <div class="link-title">1학기 동아리 발표회</div>
-              <div class="link-subtitle">2진법 체험</div>
+              <div class="link-subtitle">카드로 만나는 2진법</div>
             </div>
             <div class="arrow">→</div>
           </a>
@@ -210,7 +246,7 @@
           <a href="/goldenbell/" class="link-card">
             <div>
               <div class="link-title">수학 골든벨</div>
-              <div class="link-subtitle">수학 퀴즈 행사</div>
+              <div class="link-subtitle">10월 30일 · 참가 신청</div>
             </div>
             <div class="arrow">→</div>
           </a>

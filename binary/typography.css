@@ -21,8 +21,8 @@ body, input, select, textarea, button, h1, h2, h3, .brand, .btn {
 }
 
 :root { --ink: #111b2e; --muted: #434e63; --blue: #2854cc; }
-body { font-size: 18px; line-height: 1.8; }
-.hero p, .page-head p, .sub-hero p { font-size: 18px; line-height: 1.85; }
+body { font-size: 19px; line-height: 1.9; }
+.hero p, .page-head p, .sub-hero p { font-size: 19px; line-height: 1.9; }
 .hero p, .sub-hero p, .lesson-section > p, .example-head p { max-width: 38rem; }
 p, .ox-question, .result-note, .callout { text-wrap: pretty; }
 h1, h2, h3 { text-wrap: balance; }
@@ -33,9 +33,9 @@ h1, h2, h3 { text-wrap: balance; }
 .lesson-section h2, .example-head h2 { margin-bottom: 16px; }
 .kicker, .badge, .counter, .place-label, .digit-column span,
 .simple-table th, .magic-card-label, .bit-chip small, .formula-box small,
-.quiz-optional, footer { font-size: 14px; letter-spacing: 0; }
+.quiz-optional, footer { font-size: 15px; letter-spacing: 0; }
 .top nav { font-size: 16px; color: var(--ink); }
-.place-box small { font-size: 14px; opacity: 1; }
+.place-box small { font-size: 15px; opacity: 1; }
 .number-grid span, .nums span { font-size: 16px; color: var(--ink); }
 .clean-equation { font-size: 28px; line-height: 1.7; letter-spacing: 0; overflow-wrap: anywhere; }
 .ox-question { font-size: 24px; line-height: 1.7; letter-spacing: 0; }
