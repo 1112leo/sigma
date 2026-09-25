@@ -1414,15 +1414,15 @@ fieldset .button,
   order: 2;
   flex-basis: 100%;
   margin: 0;
-  color: #cbd2df;
-  font-size: 14px;
-  line-height: 1.7;
+  color: #e5ecf9;
+  font-size: 11px;
+  line-height: 1;
 }
 
 .contact-line a {
   color: #f0f3f9;
   text-decoration: underline;
-  text-underline-offset: 3px;
+  text-underline-offset: 1.5px;
 }
 
 .site-footer>p:not(.contact-line) {
