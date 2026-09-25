@@ -79,3 +79,24 @@ h1, h2, h3 { text-wrap: balance; }
 @media (prefers-reduced-motion: reduce) {
   .reveal-ready [data-reveal] { transform: none; }
 }
+
+/* Keep the principle introduction aligned with the lesson cards below it. */
+.principle-page .sub-hero { padding-block: 34px 24px; }
+.principle-page .sub-hero-inner {
+  width: min(960px, calc(100% - 36px));
+  padding: 30px 32px;
+}
+.principle-page .sub-hero-inner::after { content: none; }
+.principle-page .sub-hero h1 { margin: 10px 0; line-height: 1.32; }
+.principle-page .sub-hero p { line-height: 1.7; }
+
+@media (max-width: 600px) {
+  .principle-page .sub-hero { padding-block: 24px 20px; }
+  .principle-page .sub-hero-inner { padding: 22px; }
+  .principle-page .sub-hero h1 { margin: 8px 0; }
+  .principle-page .sub-hero p { line-height: 1.65; }
+}
+
+@media (max-width: 390px) {
+  .principle-page .sub-hero-inner { width: calc(100% - 24px); }
+}
