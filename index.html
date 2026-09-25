@@ -5,7 +5,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>시그마 | 천안오성고 수학동아리</title>
-  <meta name="description" content="천안오성고등학교 수학동아리 시그마" />
+  <meta name="description" content="천안오성고등학교 수학동아리 시그마. 이진법 카드 체험과 2026 수학 골든벨 안내." />
+  <link rel="icon" href="goldenbell/run/favicon.svg" type="image/svg+xml">
   <link rel="preload" as="font" href="goldenbell/fonts/DNFBitBit-Regular.woff2" type="font/woff2" crossorigin>
   <style>
     * {
@@ -52,9 +53,11 @@
       display: flex;
       align-items: center;
       gap: 10px;
+      color: inherit;
       font-size: 18px;
       font-weight: 800;
       letter-spacing: 0.08em;
+      text-decoration: none;
     }
 
     .logo-mark {
@@ -69,109 +72,283 @@
       letter-spacing: 0;
     }
 
-    .school {
-      font-size: 13px;
-      color: #56617a;
-      font-size: 14px;
+    .site-nav {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      font-size: 15px;
+    }
+
+    .site-nav a {
+      color: #46536b;
+      text-decoration: none;
+    }
+
+    .site-nav a:hover,
+    .site-nav a:focus-visible {
+      color: #172033;
+      text-decoration: underline;
+      text-underline-offset: 5px;
     }
 
     main {
-      min-height: calc(100svh - 136px);
-      display: flex;
-      align-items: center;
-      padding: 64px 0 76px;
+      padding: 72px 0 76px;
     }
 
     .hero {
-      width: 100%;
+      display: grid;
+      grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+      align-items: center;
+      gap: 42px;
+    }
+
+    .intro {
+      padding: 14px 0;
+    }
+
+    .eyebrow {
+      margin: 0 0 18px;
+      color: #56617a;
+      font-size: 14px;
+    }
+
+    h1,
+    h2,
+    p {
+      margin-top: 0;
     }
 
     h1 {
-      margin: 0;
-      font-size: clamp(60px, 9vw, 94px);
-      line-height: 1;
+      margin-bottom: 0;
+      font-size: clamp(62px, 8vw, 92px);
+      line-height: 1.1;
       letter-spacing: -0.03em;
-      font-weight: 800;
-      color: #172033;
     }
 
     .description {
-      max-width: 38em;
-      margin: 20px 0 0;
+      max-width: 24em;
+      margin: 24px 0 0;
+      color: #46536b;
       font-size: 19px;
       line-height: 1.8;
-      color: #46536b;
-      word-break: keep-all;
     }
 
-    .links {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
+    .intro-actions {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 18px 22px;
+      margin-top: 32px;
+    }
+
+    .primary-link,
+    .secondary-link,
+    .event-detail,
+    .binary-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
       gap: 16px;
-      margin-top: 36px;
+      text-decoration: none;
     }
 
-    .link-card {
+    .primary-link {
+      min-height: 56px;
+      padding: 14px 20px;
+      border-radius: 13px;
+      background: #172033;
+      color: #ffffff;
+    }
+
+    .secondary-link {
+      color: #172033;
+      text-decoration: underline;
+      text-underline-offset: 5px;
+    }
+
+    .event-card {
+      padding: 28px 30px 22px;
+      overflow: hidden;
+      border-radius: 24px;
+      background: #172033;
+      color: #ffffff;
+      box-shadow: 0 18px 42px rgba(23, 32, 51, 0.14);
+    }
+
+    .event-card-header,
+    .event-detail {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      min-height: 128px;
-      padding: 22px 26px;
-      border: 1px solid #dfe4ee;
-      border-radius: 18px;
-      color: #172033;
-      text-decoration: none;
-      transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
-      background: #ffffff;
-      box-shadow: 0 8px 24px rgba(23, 32, 51, 0.04);
     }
 
-    .link-card:hover {
-      border-color: #3568ed;
-      transform: translateY(-3px);
-      box-shadow: 0 16px 32px rgba(23, 32, 51, 0.09);
+    .event-card-header {
+      gap: 16px;
+      color: #d5ddeb;
+      font-size: 13px;
     }
 
-    .link-card:focus-visible {
-      outline: 3px solid rgba(53, 104, 237, 0.38);
-      outline-offset: 3px;
+    .event-card-header time {
+      text-align: right;
     }
 
-    .link-title {
-      font-size: 20px;
-      font-weight: 700;
+    .event-main {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 190px;
+      gap: 8px;
     }
 
-    .link-subtitle {
-      margin-top: 5px;
-      font-size: 14px;
-      color: #56617a;
+    .event-main h2 {
+      margin: 0 0 8px;
+      font-size: clamp(29px, 3.3vw, 41px);
+      line-height: 1.3;
     }
 
-    .arrow {
+    .event-main p {
+      margin: 0;
+      color: #d5ddeb;
+      font-size: 15px;
+    }
+
+    .event-main img {
+      width: min(42%, 220px);
+      height: auto;
+      flex: none;
+      mix-blend-mode: screen;
+      -webkit-mask-image: radial-gradient(circle, #000 45%, transparent 74%);
+      mask-image: radial-gradient(circle, #000 45%, transparent 74%);
+    }
+
+    .event-meta {
       display: grid;
-      place-items: center;
-      width: 36px;
-      height: 36px;
-      flex: 0 0 auto;
-      border-radius: 50%;
-      background: #eef2ff;
-      font-size: 22px;
-      color: #3568ed;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin: 0;
+      padding: 18px 0;
+      border-block: 1px solid rgba(255, 255, 255, 0.17);
     }
 
-    .link-card:nth-child(2) .arrow {
-      background: #fff3c4;
-      color: #9a7310;
+    .event-meta dt {
+      color: #b4bfd3;
+      font-size: 13px;
+    }
+
+    .event-meta dd {
+      margin: 4px 0 0;
+      font-size: 17px;
+      line-height: 1.4;
+    }
+
+    .event-benefit {
+      margin: 18px 0 14px;
+      color: #f5d57f;
+      font-size: 15px;
+    }
+
+    .event-detail {
+      color: #ffffff;
+      font-size: 15px;
+    }
+
+    .binary-section {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 18px 30px;
+      margin-top: 24px;
+      padding: 29px 32px;
+      border: 1px solid #dfe4ee;
+      border-radius: 22px;
+      background: #ffffff;
+    }
+
+    .binary-heading {
+      grid-row: span 2;
+    }
+
+    .binary-heading .eyebrow {
+      margin-bottom: 10px;
+    }
+
+    .binary-heading h2 {
+      margin-bottom: 8px;
+      font-size: 27px;
+      line-height: 1.4;
+    }
+
+    .binary-heading p:last-child {
+      margin-bottom: 0;
+      color: #56617a;
+      font-size: 15px;
+    }
+
+    .binary-steps {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      align-self: end;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .binary-steps li {
+      padding: 10px 8px;
+      border: 1px solid #dfe4ee;
+      border-radius: 10px;
+      text-align: center;
+      font-size: 14px;
+    }
+
+    .binary-steps span {
+      display: block;
+      color: #3568ed;
+      font-size: 12px;
+    }
+
+    .binary-link {
+      justify-self: start;
+      color: #2453cb;
+      font-size: 15px;
+      text-decoration: underline;
+      text-underline-offset: 5px;
+    }
+
+    .primary-link:hover,
+    .event-detail:hover,
+    .binary-link:hover {
+      opacity: 0.82;
+    }
+
+    a:focus-visible {
+      outline: 3px solid #3568ed;
+      outline-offset: 4px;
     }
 
     footer {
-      height: 60px;
       display: flex;
       align-items: center;
+      min-height: 60px;
+      padding: 12px 0;
       border-top: 1px solid #dfe4ee;
       color: #56617a;
       font-size: 13px;
+    }
+
+    @media (max-width: 820px) {
+      main {
+        padding: 52px 0 60px;
+      }
+
+      .hero,
+      .binary-section {
+        grid-template-columns: 1fr;
+      }
+
+      .binary-heading {
+        grid-row: auto;
+      }
     }
 
     @media (max-width: 640px) {
@@ -183,26 +360,78 @@
         height: 68px;
       }
 
-      .school {
-        display: none;
+      .site-nav {
+        gap: 14px;
+        font-size: 13px;
       }
 
       main {
-        min-height: calc(100svh - 128px);
-        padding: 44px 0 56px;
+        padding: 38px 0 52px;
       }
 
-      .links {
-        grid-template-columns: 1fr;
+      .hero {
+        gap: 32px;
       }
 
-      .link-card {
-        min-height: 108px;
-        padding: 18px 20px;
+      .intro {
+        padding: 0;
+      }
+
+      .intro .eyebrow {
+        margin-bottom: 12px;
+      }
+
+      h1 {
+        font-size: 66px;
       }
 
       .description {
+        margin-top: 15px;
         font-size: 17px;
+      }
+
+      .intro-actions {
+        margin-top: 22px;
+      }
+
+      .event-card {
+        padding: 23px 22px 20px;
+      }
+
+      .event-main {
+        min-height: 145px;
+      }
+
+      .event-main h2 {
+        font-size: 29px;
+      }
+
+      .event-meta dd {
+        font-size: 15px;
+      }
+
+      .binary-section {
+        gap: 20px;
+        padding: 25px 22px;
+      }
+
+      .binary-heading h2 {
+        font-size: 24px;
+      }
+    }
+
+    @media (max-width: 370px) {
+      .site-nav {
+        gap: 8px;
+      }
+
+      .logo {
+        font-size: 16px;
+      }
+
+      .binary-steps li {
+        padding-inline: 3px;
+        font-size: 12px;
       }
     }
 
@@ -214,9 +443,6 @@
         transition-duration: 0.01ms !important;
       }
 
-      .link-card:hover {
-        transform: none;
-      }
     }
   </style>
 </head>
@@ -224,33 +450,57 @@
 <body>
   <div class="container">
     <header>
-      <div class="logo"><span class="logo-mark">Σ</span><span>시그마</span></div>
-      <div class="school">천안오성고등학교 수학동아리</div>
+      <a class="logo" href="/" aria-label="시그마 메인으로"><span class="logo-mark" aria-hidden="true">Σ</span><span>시그마</span></a>
+      <nav class="site-nav" aria-label="주요 페이지">
+        <a href="/binary/">이진법 체험</a>
+        <a href="/goldenbell/">수학 골든벨</a>
+      </nav>
     </header>
 
-    <main>
-      <section class="hero">
-        <h1>시그마</h1>
-
-        <p class="description">수학을 직접 체험하고, 함께 도전하는 시그마의 활동을 소개합니다.</p>
-
-        <div class="links">
-          <a href="/binary/" class="link-card">
-            <div>
-              <div class="link-title">1학기 동아리 발표회</div>
-              <div class="link-subtitle">카드로 만나는 2진법</div>
-            </div>
-            <div class="arrow">→</div>
-          </a>
-
-          <a href="/goldenbell/" class="link-card">
-            <div>
-              <div class="link-title">수학 골든벨</div>
-              <div class="link-subtitle">10월 30일 · 참가 신청</div>
-            </div>
-            <div class="arrow">→</div>
-          </a>
+    <main id="main">
+      <section class="hero" aria-labelledby="home-title">
+        <div class="intro">
+          <p class="eyebrow">천안오성고등학교 수학동아리</p>
+          <h1 id="home-title">시그마</h1>
+          <p class="description">이진법 카드를 직접 다뤄 보고, 10월 30일 수학 골든벨에 도전해 보세요.</p>
+          <div class="intro-actions">
+            <a class="primary-link" href="/goldenbell/#apply">골든벨 참가 신청 <span aria-hidden="true">↗</span></a>
+            <a class="secondary-link" href="/binary/">이진법 체험 보기 <span aria-hidden="true">→</span></a>
+          </div>
         </div>
+        <article class="event-card" aria-labelledby="event-title">
+          <div class="event-card-header">
+            <span>다가오는 행사</span>
+            <time datetime="2026-10-30">2026. 10. 30. 금요일</time>
+          </div>
+          <div class="event-main">
+            <div>
+              <h2 id="event-title">수학 골든벨</h2>
+              <p>체육관에서 만나요.</p>
+            </div>
+            <img src="goldenbell/hero-bell.png" width="1254" height="1254" alt="" loading="lazy">
+          </div>
+          <dl class="event-meta">
+            <div><dt>시간</dt><dd>16:00–18:00 예정</dd></div>
+            <div><dt>장소</dt><dd>체육관</dd></div>
+          </dl>
+          <p class="event-benefit">선착순 60명 · 참가자 전원 이삭토스트</p>
+          <a class="event-detail" href="/goldenbell/">행사 자세히 보기 <span aria-hidden="true">→</span></a>
+        </article>
+      </section>
+
+      <section class="binary-section" aria-labelledby="binary-title">
+        <div class="binary-heading">
+          <p class="eyebrow">1학기 동아리 발표회</p>
+          <h2 id="binary-title">카드로 만나는 2진법</h2>
+          <p>원리를 읽고, OX로 확인하고, 직접 숫자를 맞혀 보세요.</p>
+        </div>
+        <ol class="binary-steps" aria-label="체험 순서">
+          <li><span>01</span>원리 보기</li>
+          <li><span>02</span>OX 테스트</li>
+          <li><span>03</span>선택 체험</li>
+        </ol>
+        <a class="binary-link" href="/binary/">이진법 카드 실험실 열기 <span aria-hidden="true">→</span></a>
       </section>
     </main>
 
