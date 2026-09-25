@@ -1,8 +1,19 @@
 <!doctype html>
 <html lang="ko">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>이해도 테스트 | 시그마</title><link rel="stylesheet" href="site.css?v=20260925-flow1"><link rel="stylesheet" href="detail.css?v=ox-quiz-2"><link rel="stylesheet" href="typography.css?v=20260925-layout5"></head>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>이해도 테스트 | 시그마</title>
+  <link rel="stylesheet" href="site.css?v=20260925-flow1">
+  <link rel="stylesheet" href="detail.css?v=ox-quiz-2">
+  <link rel="stylesheet" href="typography.css?v=20260925-layout5">
+</head>
+
 <body class="sub-page">
-  <header class="top wrap"><a class="brand" href="/"><b class="logo-mark">Σ</b> 시그마</a><nav><a href="principle.html">원리 보기</a><a href="test.html">테스트</a><a href="experience.html">선택 체험</a></nav></header>
+  <header class="top wrap"><a class="brand" href="/"><b class="logo-mark">Σ</b> 시그마</a>
+    <nav><a href="principle.html">원리 보기</a><a href="test.html">테스트</a><a href="experience.html">체험 하기</a></nav>
+  </header>
   <main class="quiz-wrap">
     <section class="quiz-card" id="quizCard">
       <div id="quizActive">
@@ -16,39 +27,50 @@
         </div>
         <div class="quiz-feedback" id="quizFeedback" role="status" aria-live="polite"></div>
       </div>
-      <div class="quiz-complete" id="quizComplete" hidden><div class="check">✓</div><h2>정답이에요!</h2><p>이진법의 자리값을 잘 이해했어요.</p><p class="quiz-optional">더 해보고 싶다면 온라인 숫자 맞히기를 선택해서 체험할 수 있어요.</p><div class="quiz-complete-actions"><a class="btn" href="index.html">처음으로 돌아가기</a><a class="btn primary" href="experience.html">원하면 체험하기 →</a></div></div>
+      <div class="quiz-complete" id="quizComplete" hidden>
+        <div class="check">✓</div>
+        <h2>정답이에요!</h2>
+        <p>이진법의 자리값을 잘 이해했어요.</p>
+        <p class="quiz-optional">더 해보고 싶다면 온라인 숫자 맞히기를 선택해서 체험할 수 있어요.</p>
+        <div class="quiz-complete-actions"><a class="btn" href="index.html">처음으로 돌아가기</a><a class="btn primary"
+            href="experience.html">원하면 체험하기 →</a></div>
+      </div>
     </section>
   </main>
-  <footer><div class="wrap">Σ 시그마 수학동아리</div></footer>
+  <footer>
+    <div class="wrap">Σ 시그마 수학동아리</div>
+  </footer>
   <script>
-    const questions=[
-      {text:'이진법은 0과 1만 사용한다.',answer:true},
-      {text:'이진법의 자리값은 왼쪽으로 갈수록 2배씩 커진다.',answer:true},
-      {text:'십진법은 0부터 9까지의 숫자를 사용한다.',answer:true},
-      {text:'이진법의 자리값은 1, 2, 4, 8 순서로 커진다.',answer:true},
-      {text:'13은 8 + 4 + 1로 나타낼 수 있다.',answer:true},
-      {text:'13은 8 + 4 + 2로 나타낼 수 있다.',answer:false},
-      {text:'이진법의 자리값은 왼쪽으로 갈수록 10배씩 커진다.',answer:false},
-      {text:'숫자가 들어 있는 카드의 기준값을 더하면 고른 숫자를 알 수 있다.',answer:true},
-      {text:'1101₂는 십진수로 13이다.',answer:true},
-      {text:'이진법은 0, 1, 2를 사용한다.',answer:false}
+    const questions = [
+      { text: '이진법은 0과 1만 사용한다.', answer: true },
+      { text: '이진법의 자리값은 왼쪽으로 갈수록 2배씩 커진다.', answer: true },
+      { text: '십진법은 0부터 9까지의 숫자를 사용한다.', answer: true },
+      { text: '이진법의 자리값은 1, 2, 4, 8 순서로 커진다.', answer: true },
+      { text: '13은 8 + 4 + 1로 나타낼 수 있다.', answer: true },
+      { text: '13은 8 + 4 + 2로 나타낼 수 있다.', answer: false },
+      { text: '이진법의 자리값은 왼쪽으로 갈수록 10배씩 커진다.', answer: false },
+      { text: '숫자가 들어 있는 카드의 기준값을 더하면 고른 숫자를 알 수 있다.', answer: true },
+      { text: '1101₂는 십진수로 13이다.', answer: true },
+      { text: '이진법은 0, 1, 2를 사용한다.', answer: false }
     ];
-    const active=document.getElementById('quizActive');
-    const complete=document.getElementById('quizComplete');
-    const question=questions[Math.floor(Math.random()*questions.length)];
-    document.getElementById('oxQuestion').textContent=question.text;
-    document.querySelectorAll('.ox-button').forEach(button=>{
-      button.addEventListener('click',()=>{
-        const selected=button.dataset.answer==='true';
-        const feedback=document.getElementById('quizFeedback');
-        if(selected===question.answer){
-          active.hidden=true;complete.hidden=false;
-        }else{
-          feedback.className='quiz-feedback show wrong';
-          feedback.textContent='다시 생각해 보세요. 원리 페이지에서 배운 자리값을 떠올려 보세요.';
+    const active = document.getElementById('quizActive');
+    const complete = document.getElementById('quizComplete');
+    const question = questions[Math.floor(Math.random() * questions.length)];
+    document.getElementById('oxQuestion').textContent = question.text;
+    document.querySelectorAll('.ox-button').forEach(button => {
+      button.addEventListener('click', () => {
+        const selected = button.dataset.answer === 'true';
+        const feedback = document.getElementById('quizFeedback');
+        if (selected === question.answer) {
+          active.hidden = true; complete.hidden = false;
+        } else {
+          feedback.className = 'quiz-feedback show wrong';
+          feedback.textContent = '다시 생각해 보세요. 원리 페이지에서 배운 자리값을 떠올려 보세요.';
         }
       });
     });
   </script>
-<script src="reveal.js"></script></body>
+  <script src="reveal.js"></script>
+</body>
+
 </html>
