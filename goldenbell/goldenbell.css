@@ -1422,7 +1422,7 @@ fieldset .button,
 .contact-line a {
   color: #f0f3f9;
   text-decoration: underline;
-  text-underline-offset: 1.5px;
+  text-underline-offset: 2px;
 }
 
 .site-footer>p:not(.contact-line) {
