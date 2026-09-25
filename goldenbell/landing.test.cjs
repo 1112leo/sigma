@@ -13,15 +13,16 @@ test('event page uses the agreed date, tentative hours and benefits', () => {
   assert.equal(new Date('2026-10-30T12:00:00+09:00').getUTCDay(), 5);
 });
 
-test('registration stays disabled; the only script is decorative scroll motion', () => {
-  const form = html.match(/<form\b[^>]*>[\s\S]*?<\/form>/)[0];
-  assert.match(form, /aria-describedby="form-notice"/);
-  assert.match(form, /<fieldset disabled>[\s\S]*<\/fieldset>/);
-  assert.match(form, /<button[^>]*type="button" disabled/);
-  assert.doesNotMatch(form, /\b(?:action|name|formaction)\s*=/);
-  assert.doesNotMatch(form, /<script\b|\bon\w+\s*=/i);
+test('registration links to the organizer form without collecting data on the landing', () => {
+  const link = html.match(/<a\b[^>]*class="[^"]*registration-link[^"]*"[^>]*>/)[0];
+  assert.match(link, /href="https:\/\/forms\.gle\/HBcpW34hJzRkYkDi9"/);
+  assert.match(link, /target="_blank"/);
+  assert.match(link, /rel="noopener noreferrer"/);
+  assert.match(link, /aria-describedby="registration-tab-note"/);
+  assert.doesNotMatch(html, /<form\b|<input\b|<iframe\b|\bon\w+\s*=/i);
   assert.deepEqual([...html.matchAll(/<script\b[^>]*src="([^"]+)"/g)].map(match => match[1]), ['reveal.js?v=20260925-readable3']);
-  assert.match(html, /지금은 입력하거나 접수할 수 없어요/);
+  assert.doesNotMatch(html, /오픈 준비 중|미리보기|접수 전 목업/);
+  assert.match(html, /새 탭에서 구글폼이 열립니다/);
 });
 
 test('all internal anchors and asset references resolve; operator link is retained', () => {
@@ -30,20 +31,19 @@ test('all internal anchors and asset references resolve; operator link is retain
   for (const [, id] of html.matchAll(/href="#([^"]+)"/g)) assert.ok(ids.includes(id), id);
   for (const [, url] of html.matchAll(/(?:href|src)="([^"#][^"]*)"/g)) {
     const file = url.split('?')[0];
-    if (file.startsWith('/')) continue;
+    if (file.startsWith('/') || file.startsWith('https://')) continue;
     assert.ok(fs.existsSync(path.join(__dirname, file)), file);
   }
   assert.match(html, /id="temporary-run-link" href="\/goldenbell\/run\/"/);
   assert.ok(fs.existsSync(path.join(__dirname, 'run/index.html')));
 });
 
-test('page has labeled inputs, heading structure and reduced-motion support', () => {
+test('page has accessible registration, heading structure and reduced-motion support', () => {
   assert.equal((html.match(/<h1\b/g) || []).length, 1);
   assert.match(html, /class="skip-link"/);
-  assert.match(html, /<label for="applicant-name">/);
-  assert.match(html, /<label for="applicant-number">/);
+  assert.match(html, /id="registration-tab-note"/);
   assert.match(html, /<img[^>]*alt="[^"]+"/);
-  assert.match(fs.readFileSync(path.join(__dirname, 'goldenbell.css'), 'utf8'), /prefers-reduced-motion:reduce/);
+  assert.match(fs.readFileSync(path.join(__dirname, 'goldenbell.css'), 'utf8'), /prefers-reduced-motion:\s*reduce/);
 });
 
 test('refined landing keeps venue consistent and removes emoji-dependent decoration', () => {
@@ -51,7 +51,7 @@ test('refined landing keeps venue consistent and removes emoji-dependent decorat
   assert.match(html, /<dt>장소<\/dt>\s*<dd>체육관<\/dd>/);
   assert.match(html, /체육관에서 진행합니다/);
   assert.match(html, /간식과 상품은 아직 확정 전/);
-  assert.match(html, /구글폼으로 받을 예정/);
+  assert.match(html, /구글폼에서 참가 신청을 받고 있어요/);
 });
 
 test('DNF BitBit is packaged locally with its license and decorations are noninteractive', () => {

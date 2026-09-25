@@ -17,10 +17,11 @@ node --test goldenbell/landing.test.cjs goldenbell/run/*.test.cjs
 
 ## Registration
 
-The form is deliberately disabled: no submission endpoint, JavaScript, storage,
-analytics or collection of applicant information. Before opening registration,
-confirm eligibility, venue, schedule, prize details, and the actual data handling
-and consent requirements. Do not merely remove `disabled`.
+Registration links to the organizer-provided Google Form:
+https://forms.gle/HBcpW34hJzRkYkDi9. It opens in a new tab; this landing page does
+not collect or store applicant details. Form questions, consent and response
+settings are managed in Google Forms. Keep this link and the FAQ consistent if
+registration closes or the organizer changes the form.
 
 ## Hero artwork
 
