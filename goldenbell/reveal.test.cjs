@@ -70,12 +70,18 @@ test('keyboard focus and live reduced-motion changes cancel decorative animation
   assert.equal(state.calls[1].animation.cancelled, true);
 });
 
-test('anchor navigation and printing release pending content without animation', () => {
-  for (const type of ['hashchange', 'beforeprint']) {
-    const state = setup();
-    state.events[type]();
-    assert.equal(state.observed.size, 0);
-    assert.ok(state.items.every(item => !item.attributes.has('data-scroll-pending')));
-    assert.equal(state.calls.length, 0);
-  }
+test('anchor navigation keeps scroll reveal while printing releases pending content without animation', () => {
+  const anchor = setup();
+  assert.equal(anchor.events.hashchange, undefined, 'anchor navigation must not reveal the entire page at once');
+  assert.equal(anchor.observed.size, 2);
+  assert.ok(anchor.items.slice(1).every(item => item.attributes.has('data-scroll-pending')));
+  anchor.enter();
+  assert.equal(anchor.observed.size, 0);
+  assert.equal(anchor.calls.length, 2);
+
+  const printing = setup();
+  printing.events.beforeprint();
+  assert.equal(printing.observed.size, 0);
+  assert.ok(printing.items.every(item => !item.attributes.has('data-scroll-pending')));
+  assert.equal(printing.calls.length, 0);
 });

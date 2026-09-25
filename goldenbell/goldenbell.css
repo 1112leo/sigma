@@ -861,10 +861,6 @@ fieldset .button {
     font-size: 12px
   }
 
-  .nav-about {
-    display: none
-  }
-
   .nav-cta {
     padding: 10px 12px
   }
@@ -1366,10 +1362,26 @@ fieldset .button,
   margin-top: 20px;
 }
 
-#form-notice strong { color: var(--gold); font-weight: inherit; }
-.about-body h2, .section-heading h2 { text-wrap: balance; letter-spacing: 0; }
-.benefit-description, .benefit-note, .faq-list p { text-wrap: pretty; }
-.benefit-top > .benefit-tag { font-size: 14px; }
+#form-notice strong {
+  color: var(--gold);
+  font-weight: inherit;
+}
+
+.about-body h2,
+.section-heading h2 {
+  text-wrap: balance;
+  letter-spacing: 0;
+}
+
+.benefit-description,
+.benefit-note,
+.faq-list p {
+  text-wrap: pretty;
+}
+
+.benefit-top>.benefit-tag {
+  font-size: 14px;
+}
 
 .registration-link {
   display: flex;

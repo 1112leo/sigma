@@ -56,5 +56,4 @@
     if (motion.matches) showAll();
   });
   window.addEventListener('beforeprint', showAll);
-  window.addEventListener('hashchange', showAll);
 })();
