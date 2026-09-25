@@ -1581,7 +1581,7 @@ async function applyBatch() {
     if (result.errors.length) return;
     if (draft.mode === 'replace' && !confirm('전체 문제를 교체할까요? 타이머와 정답 공개 상태는 초기화됩니다. 기존 행사 구성은 유지되어 누락 참조가 생길 수 있습니다. 적용 전 JSON 백업을 저장합니다.')) return;
     if (draft.mode !== 'replace' && !mayNavigate()) return;
-    downloadBackup('before-question-import');
+    if (!downloadBackup('before-question-import')) throw new Error('JSON 백업을 시작하지 못해 문제 가져오기를 중단했습니다.');
     commitQuestionBatch(result, draft.mode);
   } catch (error) { draft.error = error.message; }
   finally { draft.busy = false; if (state) render(); }
@@ -1831,7 +1831,7 @@ function handleAction(action) {
   if (action === 'change-pin') return changePin();
   if (action === 'reset-all' && confirm('문제와 행사 설정을 모두 초기화할까요? 진행 PIN은 유지됩니다.')) {
     backupReadToken++;
-    downloadBackup('before-reset');
+    if (!downloadBackup('before-reset')) return;
     const previous = state;
     const wasBlocked = persistenceBlocked;
     persistenceBlocked = false;
@@ -2152,20 +2152,27 @@ async function changePin() {
 }
 
 function downloadBackup(label = '') {
-  if (!state) return;
-  const backup = persistenceBlocked ? localStorage.getItem(PRIVATE_STORAGE_KEY) : JSON.stringify(state, null, 2);
-  const blob = new Blob([backup], { type: 'application/json' });
-  const anchor = document.createElement('a');
-  anchor.href = URL.createObjectURL(blob);
-  const suffix = label ? `-${label}` : '';
-  anchor.download = `sigma-goldenbell${suffix}-${new Date().toISOString().slice(0, 10)}.json`;
-  anchor.click();
-  setTimeout(() => URL.revokeObjectURL(anchor.href), 0);
+  if (!state) return false;
+  try {
+    const backup = persistenceBlocked ? localStorage.getItem(PRIVATE_STORAGE_KEY) : JSON.stringify(state, null, 2);
+    if (!backup) throw new Error('empty-backup');
+    const blob = new Blob([backup], { type: 'application/json' });
+    const anchor = document.createElement('a');
+    const objectUrl = URL.createObjectURL(blob);
+    anchor.href = objectUrl;
+    const suffix = label ? `-${label}` : '';
+    anchor.download = `sigma-goldenbell${suffix}-${new Date().toISOString().slice(0, 10)}.json`;
+    try { anchor.click(); }
+    finally { setTimeout(() => URL.revokeObjectURL(objectUrl), 60000); }
+    return true;
+  } catch {
+    toast('JSON 백업 다운로드를 시작하지 못했습니다. 브라우저 다운로드 설정을 확인해주세요.');
+    return false;
+  }
 }
 
 function exportData() {
-  downloadBackup();
-  toast('백업 다운로드를 요청했습니다. 다운로드 폴더에서 파일을 확인해주세요.');
+  if (downloadBackup()) toast('백업 다운로드를 요청했습니다. 다운로드 폴더에서 파일을 확인해주세요.');
 }
 
 function importData(event) {
@@ -2184,7 +2191,7 @@ function importData(event) {
       const parsed = JSON.parse(reader.result);
       if (!parsed || !Array.isArray(parsed.questions)) throw new Error('invalid-backup');
       if (!confirm('현재 문제·슬라이드 설정을 백업 파일로 교체할까요? 기존 상태는 자동 백업됩니다.')) return;
-      downloadBackup('before-import');
+      if (!downloadBackup('before-import')) return;
       const imported = normalizeState(parsed);
       if (totalImageDataLength(imported.questions) > MAX_TOTAL_IMAGE_DATA_LENGTH) {
         throw new Error('image-storage-limit');

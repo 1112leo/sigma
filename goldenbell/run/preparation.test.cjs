@@ -116,7 +116,7 @@ test('unsupported trusted math commands fall back to complete raw input and warn
 });
 test('late full-backup reads cannot mutate or broadcast after PIN lock and restores disarm reveal snapshots', () => {
   const h=setup(); const readers=[]; h.context.FileReader=class { constructor(){readers.push(this);} readAsText(){} };
-  h.run('downloadBackup=()=>{}; isUnlocked=()=>true; state=defaultState(); activateSequence(state,3); state.answerVisible=true; state.runtime.overlay={type:"screen",screenId:"judging"}; const backup=JSON.stringify(state); importData({target:{files:[{size:10}],value:""}});');
+  h.run('downloadBackup=()=>true; isUnlocked=()=>true; state=defaultState(); activateSequence(state,3); state.answerVisible=true; state.runtime.overlay={type:"screen",screenId:"judging"}; const backup=JSON.stringify(state); importData({target:{files:[{size:10}],value:""}});');
   readers[0].result=h.run('backup'); readers[0].onload();
   assert.equal(h.run('state.runtime.returns.length'),0);
   h.run('importData({target:{files:[{size:10}],value:""}}); lockConsole();');
@@ -126,11 +126,44 @@ test('late full-backup reads cannot mutate or broadcast after PIN lock and resto
 });
 test('full restore cancels older async batch/preflight and reset storage failure rolls back', async () => {
   const h=setup(); const readers=[]; h.context.FileReader=class { constructor(){readers.push(this);} readAsText(){} };
-  h.run('downloadBackup=()=>{}; isUnlocked=()=>true; let finishImages; brokenImages=()=>new Promise(resolve=>{finishImages=resolve}); importDraft={rows:input,mode:"append"}; const pending=applyBatch();');
+  h.run('downloadBackup=()=>true; isUnlocked=()=>true; let finishImages; brokenImages=()=>new Promise(resolve=>{finishImages=resolve}); importDraft={rows:input,mode:"append"}; const pending=applyBatch();');
   h.run('importData({target:{files:[{size:10}],value:""}})');
   readers[0].result=JSON.stringify({questions:[{id:'RESTORED',question:'Restored',answer:'A'}]}); readers[0].onload();
   h.run('finishImages([])'); await h.run('pending');
   assert.deepEqual(h.json('state.questions.map(q=>q.id)'),['RESTORED']); assert.equal(h.run('importDraft'),null);
   h.run('const pendingCheck=runPreflight(); clearPreparationDrafts(); finishImages([])'); await h.run('pendingCheck'); assert.equal(h.run('preflightResult'),null);
   const before=h.json('state'); h.context.localStorage.setItem=()=>{throw new Error('quota')}; h.run('handleAction("reset-all")'); assert.deepEqual(h.json('state'),before);
+});
+
+test('backup failure prevents reset, full restore and question import', async () => {
+  const h=setup(); const readers=[];
+  h.context.FileReader=class { constructor(){readers.push(this);} readAsText(){} };
+  h.run('state.questions=input.map(migrateQuestion); saveState(); downloadBackup=()=>false; isUnlocked=()=>true; brokenImages=async()=>[]; importDraft={rows:[{id:"NEW",question:"New",answer:"A"}],mode:"append"};');
+  const before=h.json('state');
+  h.run('handleAction("reset-all")');
+  assert.deepEqual(h.json('state'),before);
+  h.run('const pending=applyBatch()'); await h.run('pending');
+  assert.deepEqual(h.json('state'),before);
+  assert.match(h.run('importDraft.error'),/백업을 시작하지 못해/);
+  h.run('importData({target:{files:[{size:10}],value:""}})');
+  readers[0].result=JSON.stringify({questions:[{id:'RESTORED',question:'Restored',answer:'A'}]});
+  readers[0].onload();
+  assert.deepEqual(h.json('state'),before);
+});
+
+test('backup reports failure instead of creating an empty file, and preserves unreadable source bytes', async () => {
+  const h=setup(); const notices=[]; let clicked=0; let blob;
+  h.context.Blob=Blob;
+  h.context.URL={createObjectURL(value){blob=value;return 'blob:test';},revokeObjectURL(){}};
+  h.context.document.createElement=()=>({click(){clicked++;}});
+  h.context.setTimeout=callback=>callback();
+  h.context.toast=message=>notices.push(message);
+  h.run('persistenceBlocked=true; exportData()');
+  assert.equal(clicked,0);
+  assert.ok(notices.some(message=>message.includes('시작하지 못했습니다')));
+  assert.ok(!notices.some(message=>message.includes('요청했습니다')));
+  h.storage.set('sigma-goldenbell-v1','{unreadable original');
+  assert.equal(h.run('downloadBackup()'),true);
+  assert.equal(clicked,1);
+  assert.equal(await blob.text(),'{unreadable original');
 });
