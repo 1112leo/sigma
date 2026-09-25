@@ -6,9 +6,10 @@ const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 
 test('event page uses the agreed date, tentative hours and benefits', () => {
   assert.match(html, /datetime="2026-10-30"/);
-  assert.match(html, /16:00–18:00 예정/);
-  assert.match(html, /16:00 — 18:00/);
-  assert.doesNotMatch(html, /17:30/);
+  assert.match(html, /16:00–17:30 예정/);
+  assert.match(html, /16:00 — 17:30/);
+  assert.doesNotMatch(html, /18:00/);
+  assert.match(html, /행사 시간은 준비 상황에 따라 조정될 수 있습니다/);
   assert.match(html, /이삭토스트/);
   assert.match(html, /문화상품권/);
   assert.match(html, /상품 금액과 시상 기준.*추후 안내/);
@@ -58,7 +59,7 @@ test('refined landing keeps venue consistent and removes emoji-dependent decorat
   assert.match(html, /참가자 전원 제공/);
   assert.match(html, /시상 상품은 예정/);
   assert.doesNotMatch(html, /간식 · 예정|간식과 상품은 아직 확정 전/);
-  assert.match(html, /참가 신청은 구글폼에서 받습니다/);
+  assert.match(html, /구글폼에서 참가 신청을 받고 있어요/);
 });
 
 test('DNF BitBit is packaged locally with its license and decorations are noninteractive', () => {
