@@ -39,6 +39,40 @@ test('filtered reorder and deletion retain current question ID, answer state and
   assert.deepEqual(h.json('state.questions.map(q=>q.order)'),[1,2]);
 });
 
+test('deleting a question removes every slide occurrence and preserves a surviving active slide', () => {
+  const h=fixture();
+  h.run(`state.sequence=[{type:'question',questionId:'Q1'},{type:'question',questionId:'Q2'},{type:'question',questionId:'Q1'},{type:'screen',screenId:'end'}];activateSequence(state,1);state.answerVisible=true;state.timer.remaining=17;state.runtime.mainResume={index:1,questionId:'Q2',remaining:17};deleteQuestion('Q1');`);
+  assert.deepEqual(h.json('state.sequence.map(item=>item.questionId||item.screenId)'), ['Q2','end']);
+  assert.equal(h.run('state.sequenceIndex'),0);
+  assert.equal(h.run('currentQuestion().id'),'Q2');
+  assert.equal(h.run('state.answerVisible'),true);
+  assert.equal(h.run('state.timer.remaining'),17);
+  assert.equal(h.run('state.runtime.mainResume.index'),0);
+  h.run(`deleteQuestion('Q2');`);
+  assert.deepEqual(h.json('state.sequence.map(item=>item.screenId)'), ['end']);
+  assert.equal(h.run('state.sequenceIndex'),0);
+  assert.equal(h.run('state.displayMode'),'screen');
+  assert.equal(h.run('state.answerVisible'),false);
+  assert.equal(h.run('state.runtime.mainResume'),null);
+});
+
+test('question deletion rolls back references and progress when saving fails', () => {
+  const h=fixture();
+  h.run(`activateSequence(state,1);before=JSON.stringify(state);localStorage.setItem=()=>{throw Error('quota')};deleteQuestion('Q2');`);
+  assert.equal(h.run('JSON.stringify(state)'),h.run('before'));
+});
+
+test('deleting a configured question during a run needs confirmation and resets only run progress', () => {
+  const h=fixture();
+  h.run(`startRun();before=JSON.stringify(state);confirmCalls=0;confirm=()=>++confirmCalls!==2;deleteQuestion('Q1');`);
+  assert.equal(h.run('JSON.stringify(state)'),h.run('before'));
+  h.run(`confirm=()=>true;deleteQuestion('Q1');`);
+  assert.equal(h.run('state.runtime.run.active'),false);
+  assert.equal(h.run('state.questions.some(q=>q.id===\'Q1\')'),false);
+  assert.equal(h.run('state.sequence.some(item=>item.questionId===\'Q1\')'),false);
+  assert.equal(h.run('state.questions.some(q=>q.id===\'Q2\')'),true);
+});
+
 test('blank private fields save, edited ID, invalid time rejected, storage failures retain draft', () => {
   const h=fixture();
   h.run(`openQuestion('Q1');`);

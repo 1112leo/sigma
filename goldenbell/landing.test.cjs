@@ -12,7 +12,7 @@ test('event page uses the agreed date, tentative hours and benefits', () => {
   assert.match(html, /행사 시간은 준비 상황에 따라 조정될 수 있습니다/);
   assert.match(html, /이삭토스트/);
   assert.match(html, /문화상품권/);
-  assert.match(html, /상품 금액과 시상 기준.*추후 안내/);
+  assert.match(html, /상품 구성과 세부 시상 기준은 추후 안내/);
   assert.equal(new Date('2026-10-30T12:00:00+09:00').getUTCDay(), 5);
 });
 
@@ -57,9 +57,10 @@ test('refined landing keeps venue consistent and removes emoji-dependent decorat
   assert.match(html, /<dt>장소<\/dt>\s*<dd>체육관<\/dd>/);
   assert.match(html, /체육관에서 진행합니다/);
   assert.match(html, /참가자 전원 제공/);
-  assert.match(html, /시상 상품은 예정/);
+  assert.match(html, /시상 상품 · 예정/);
   assert.doesNotMatch(html, /간식 · 예정|간식과 상품은 아직 확정 전/);
-  assert.match(html, /구글폼에서 참가 신청을 받고 있어요/);
+  assert.match(html, /구글폼으로 참가 신청을 받고 있습니다/);
+  assert.doesNotMatch(html, /나중에.*적지 뭐/);
 });
 
 test('DNF BitBit is packaged locally with its license and decorations are noninteractive', () => {

@@ -2091,13 +2091,27 @@ function saveQuestion() {
 
 function deleteQuestion(id) {
   const index = state.questions.findIndex(question => question.id === id);
-  if (index < 0 || !confirm(`'${state.questions[index].title}' 문제를 삭제할까요?`)) return;
+  if (index < 0) return;
+  const occurrences = state.sequence.filter(item => item.type === 'question' && item.questionId === id).length;
+  const impact = occurrences ? ` 행사 구성에 배치된 ${occurrences}개 항목도 함께 제거됩니다.` : '';
+  if (!confirm(`'${state.questions[index].title}' 문제를 삭제할까요?${impact}`)) return;
   const currentId = currentQuestion()?.id;
   update(next => {
+    const oldSequence = next.sequence;
+    const oldPosition = next.sequenceIndex;
+    const removedBefore = oldSequence.slice(0, oldPosition).filter(item => item.type === 'question' && item.questionId === id).length;
+    const deletingCurrent = oldSequence[oldPosition]?.type === 'question' && oldSequence[oldPosition].questionId === id;
     next.questions.splice(index, 1);
     next.questions.forEach((question, position) => { question.order = position + 1; });
+    next.sequence = next.sequence.filter(item => item.type !== 'question' || item.questionId !== id);
+    next.sequenceIndex = next.sequence.length ? Math.min(Math.max(0, oldPosition - removedBefore), next.sequence.length - 1) : -1;
+    if (next.runtime.mainResume?.questionId === id) next.runtime.mainResume = null;
+    else if (next.runtime.mainResume) {
+      const beforeResume = oldSequence.slice(0, next.runtime.mainResume.index).filter(item => item.type === 'question' && item.questionId === id).length;
+      next.runtime.mainResume.index -= beforeResume;
+    }
     next.currentIndex = currentId === id ? Math.min(index, Math.max(0, next.questions.length - 1)) : Math.max(0, next.questions.findIndex(question => question.id === currentId));
-    if (currentId === id) activateCurrentItem(next);
+    if (deletingCurrent || !next.sequence.length) activateSequence(next, next.sequenceIndex);
   });
 }
 
