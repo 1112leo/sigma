@@ -6,7 +6,9 @@ const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 
 test('event page uses the agreed date, tentative hours and benefits', () => {
   assert.match(html, /datetime="2026-10-30"/);
-  assert.match(html, /16:00–18:00 예정/);
+  assert.match(html, /16:00–17:30 예정/);
+  assert.match(html, /16:00 — 17:30/);
+  assert.doesNotMatch(html, /18:00/);
   assert.match(html, /이삭토스트/);
   assert.match(html, /문화상품권/);
   assert.match(html, /상품 금액과 시상 기준.*추후 안내/);
@@ -22,7 +24,10 @@ test('registration links to the organizer form without collecting data on the la
   assert.doesNotMatch(html, /<form\b|<input\b|<iframe\b|\bon\w+\s*=/i);
   assert.deepEqual([...html.matchAll(/<script\b[^>]*src="([^"]+)"/g)].map(match => match[1]), ['reveal.js?v=20260925-readable3']);
   assert.doesNotMatch(html, /오픈 준비 중|미리보기|접수 전 목업/);
-  assert.match(html, /새 탭에서 구글폼이 열립니다/);
+  assert.match(html, /새 탭에서 신청 폼이 열립니다/);
+  assert.match(html, /선착순 60명/);
+  assert.equal((html.match(/참가 신청하기/g) || []).length, 2);
+  assert.doesNotMatch(html, /참가 신청 하기|접수 해주세요/);
 });
 
 test('all internal anchors and asset references resolve; operator link is retained', () => {
@@ -50,7 +55,9 @@ test('refined landing keeps venue consistent and removes emoji-dependent decorat
   assert.doesNotMatch(html, /✳|small-star|THE NEXT BELL|장소<\/dt><dd>추후/);
   assert.match(html, /<dt>장소<\/dt>\s*<dd>체육관<\/dd>/);
   assert.match(html, /체육관에서 진행합니다/);
-  assert.match(html, /간식과 상품은 아직 확정 전/);
+  assert.match(html, /참가자 전원 제공/);
+  assert.match(html, /시상 상품은 예정/);
+  assert.doesNotMatch(html, /간식 · 예정|간식과 상품은 아직 확정 전/);
   assert.match(html, /구글폼에서 참가 신청을 받고 있어요/);
 });
 

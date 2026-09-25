@@ -250,8 +250,8 @@ h1 {
   justify-content: space-between;
   align-items: center;
   gap: 30px;
-  min-height: 53px;
-  padding: 15px 22px;
+  min-height: 45px;
+  padding: 13px 18px;
   font-size: 14px;
   font-weight: 500;
   border: 0;
@@ -386,7 +386,7 @@ h2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 55px;
-  align-items: start
+  align-items: center
 }
 
 .about-body p {
@@ -468,7 +468,7 @@ h2 {
 .benefit-tag {
   border: 1px solid #817046;
   border-radius: 30px;
-  padding: 6px 12px;
+  padding: 4px 12px;
   font-weight: 650
 }
 
@@ -487,7 +487,7 @@ h2 {
   font-weight: 500;
   letter-spacing: -.025em;
   line-height: 1.4;
-  margin-top: 29px
+  margin-top: 22px
 }
 
 .benefit-card h3 span {
@@ -506,7 +506,7 @@ h2 {
 }
 
 .benefit-description {
-  margin-top: 23px;
+  margin-top: 16px;
   font-size: 14px;
   line-height: 1.85;
   color: #5c5134
@@ -545,7 +545,7 @@ h2 {
 .apply-section {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 80px;
+  gap: 56px;
   padding-block: 112px 95px
 }
 
@@ -1007,7 +1007,7 @@ fieldset .button {
   }
 
   .benefit-card {
-    padding: 25px 27px
+    padding: 18px 27px
   }
 
   .benefit-intro {
@@ -1338,27 +1338,61 @@ fieldset .button,
 }
 
 /* No permanent transform/layer for content waiting below the viewport. */
-.hero-kicker, .strip-label, .event-time small,
-.about-section .section-label, .apply-section .section-label,
-.schedule-note, .form-footnote, .site-footer p, .site-footer > a:last-child {
+.hero-kicker,
+.strip-label,
+.event-time small,
+.about-section .section-label,
+.apply-section .section-label,
+.schedule-note,
+.form-footnote,
+.site-footer p,
+.site-footer>a:last-child {
   color: #cbd2df;
 }
-.form-card { border-color: #5d5b4d; }
-.form-heading h3 { font-size: 24px; line-height: 1.5; letter-spacing: 0; }
-#form-notice { font-size: 17px; line-height: 1.85; margin-top: 24px; }
+
+.form-card {
+  border-color: #5d5b4d;
+}
+
+.form-heading h3 {
+  font-size: 24px;
+  line-height: 1.5;
+  letter-spacing: 0;
+}
+
+#form-notice {
+  font-size: 17px;
+  line-height: 1.85;
+  margin-top: 20px;
+}
+
+#form-notice strong { color: var(--gold); font-weight: inherit; }
+.about-body h2, .section-heading h2 { text-wrap: balance; letter-spacing: 0; }
+.benefit-description, .benefit-note, .faq-list p { text-wrap: pretty; }
+.benefit-top > .benefit-tag { font-size: 14px; }
+
 .registration-link {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   width: 100%;
-  margin-top: 32px;
-  padding: 18px 20px;
+  margin-top: 24px;
+  padding: 15px 20px;
   font-size: 16px;
   line-height: 1.6;
 }
-.form-footnote { margin: 16px 0 0; font-size: 13px; text-align: center; }
-.apply-copy > p, #form-notice { text-wrap: pretty; }
+
+.form-footnote {
+  margin: 16px 0 0;
+  font-size: 13px;
+  text-align: center;
+}
+
+.apply-copy>p,
+#form-notice {
+  text-wrap: pretty;
+}
 
 [data-scroll-pending] {
   opacity: 0;
