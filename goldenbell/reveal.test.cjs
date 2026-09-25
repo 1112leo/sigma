@@ -6,9 +6,13 @@ const script = fs.readFileSync(`${__dirname}/reveal.js`, 'utf8');
 
 function setup({ reduced = false, supported = true } = {}) {
   let callback, change, focus, disconnected = false;
+  const events = {};
   const observed = new Set();
   const calls = [];
   const items = [100, 900, 1000].map(top => ({
+    attributes: new Set(),
+    setAttribute(name) { this.attributes.add(name); },
+    removeAttribute(name) { this.attributes.delete(name); },
     getBoundingClientRect: () => ({ top }),
     contains(target) { return target === this; },
     animate(frames, options) {
@@ -25,11 +29,11 @@ function setup({ reduced = false, supported = true } = {}) {
     disconnect() { observed.clear(); disconnected = true; }
   }
   vm.runInNewContext(script, {
-    matchMedia: () => motion, window: supported ? { IntersectionObserver: Observer, addEventListener() {} } : {},
+    matchMedia: () => motion, window: supported ? { IntersectionObserver: Observer, addEventListener(type, fn) { events[type] = fn; } } : {},
     IntersectionObserver: Observer, Element: { prototype: { animate() {} } }, innerHeight: 800,
     document: { querySelectorAll: () => items, addEventListener(type, fn) { focus = fn; } },
   });
-  return { items, calls, observed, motion,
+  return { items, calls, observed, motion, events,
     enter: () => callback([...observed].map(target => ({ target, isIntersecting: true, boundingClientRect: { bottom: 500 } }))),
     reduce: () => { motion.matches = true; change(); return disconnected; },
     focus: target => focus({ target }),
@@ -39,12 +43,14 @@ function setup({ reduced = false, supported = true } = {}) {
 test('scroll reveal observes only below-fold content and stops observing after entrance', () => {
   const state = setup();
   assert.equal(state.observed.size, 2);
-  assert.ok(state.calls.every(call => call.animation.paused && call.animation.currentTime === 0));
+  assert.equal(state.calls.length, 0, 'offscreen content must not keep paused animations');
+  assert.ok(state.items.slice(1).every(item => item.attributes.has('data-scroll-pending')));
   state.enter();
   assert.equal(state.observed.size, 0);
   assert.equal(state.calls.length, 2);
-  assert.ok(state.calls.every(call => call.animation.played));
-  assert.equal(state.calls[0].options.fill, 'both');
+  assert.ok(state.items.every(item => !item.attributes.has('data-scroll-pending')));
+  assert.equal(state.calls[0].options.fill, 'backwards');
+  assert.equal(state.calls[0].frames.at(-1).transform, 'none');
 });
 
 test('reduced motion and unsupported browsers leave content unchanged', () => {
@@ -62,4 +68,14 @@ test('keyboard focus and live reduced-motion changes cancel decorative animation
   assert.equal(state.calls[0].animation.cancelled, true);
   assert.equal(state.reduce(), true);
   assert.equal(state.calls[1].animation.cancelled, true);
+});
+
+test('anchor navigation and printing release pending content without animation', () => {
+  for (const type of ['hashchange', 'beforeprint']) {
+    const state = setup();
+    state.events[type]();
+    assert.equal(state.observed.size, 0);
+    assert.ok(state.items.every(item => !item.attributes.has('data-scroll-pending')));
+    assert.equal(state.calls.length, 0);
+  }
 });

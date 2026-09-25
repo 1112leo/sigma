@@ -1199,3 +1199,9 @@ fieldset > input, fieldset .button, .faq-list summary { font-size: 14px; }
   .hero-actions { gap: 12px; }
 }
 @media (prefers-reduced-motion: reduce) { .hero-glints i { animation: none; opacity: .5; } }
+
+/* No permanent transform/layer for content waiting below the viewport. */
+[data-scroll-pending] { opacity: 0; }
+@media (prefers-reduced-motion: reduce), print {
+  [data-scroll-pending] { opacity: 1; }
+}
