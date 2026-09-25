@@ -38,7 +38,7 @@ function parseQuestionImport(text, format = 'json') {
 }
 function prepareQuestionImport(rows, existing, mode, options) {
   const errors = [], prepared = [], ids = new Set();
-  const { enums, migrate, validTime, safeImage, maxImages } = options;
+  const { enums, migrate, validTime, safeImage } = options;
   const add = (row, message) => errors.push({ row, message });
   if (!['append', 'update', 'replace'].includes(mode)) return { errors: [{ row: 0, message: '가져오기 방식 오류' }], questions: [] };
   if (!Array.isArray(rows) || !rows.length || rows.length > 500) return { errors: [{ row: 0, message: '문제는 1~500개여야 합니다.' }], questions: [] };
@@ -83,7 +83,6 @@ function prepareQuestionImport(rows, existing, mode, options) {
     for (const q of prepared) if (!oldIds.has(q.id)) questions.push({ ...q, order: questions.length + 1 });
   }
   if (questions.length > 500) add(0, '적용 후 전체 문제가 500개를 초과합니다.');
-  if (questions.reduce((sum, q) => sum + (q.image?.length || 0), 0) > maxImages) add(0, '전체 사진 용량이 저장 한도를 초과합니다.');
   return { errors, questions, prepared };
 }
 function checkPreparation(source, options) {
@@ -105,7 +104,7 @@ function checkPreparation(source, options) {
     if (q.usageStatus === 'active' && q.reviewStatus !== 'final') add('warning', 'unfinal', `${label}: 최종 검수 미완료`, q.id);
     if (q.usageStatus === 'active' && !sequenceCounts.has(q.id)) add('warning', 'unsequenced', `${label}: 행사 구성에 없는 사용 문제`, q.id);
     if (sequenceCounts.get(q.id) > 1) add('warning', 'duplicate', `${label}: 행사 구성에 ${sequenceCounts.get(q.id)}번 등장`, q.id);
-    if (q.image && !options.safeImage(q.image)) add('error', 'image', `${label}: 이미지 참조 오류`, q.id);
+    if ((q.image && !options.safeImage(q.image)) || (q.imageId && !q.image)) add('error', 'image', `${label}: 이미지 참조 오류`, q.id);
     for (const field of ['question', 'answer', 'explanation']) if (options.math(q[field]).errors.length) add('error', 'math', `${label}: ${field} 수식 오류`, q.id);
   }
   for (const round of ['revival1', 'revival2', 'final']) if (!source.questions.some(q => q.round === round && q.usageStatus === 'active' && sequenceCounts.has(q.id))) add('warning', 'empty-round', `${round}: 구성에 사용 문제가 없습니다.`);

@@ -23,7 +23,7 @@ test('registration links to the organizer form without collecting data on the la
   assert.match(link, /rel="noopener noreferrer"/);
   assert.match(link, /aria-describedby="registration-tab-note"/);
   assert.doesNotMatch(html, /<form\b|<input\b|<iframe\b|\bon\w+\s*=/i);
-  assert.deepEqual([...html.matchAll(/<script\b[^>]*src="([^"]+)"/g)].map(match => match[1]), ['reveal.js?v=20260925-readable3']);
+  assert.deepEqual([...html.matchAll(/<script\b[^>]*src="([^"]+)"/g)].map(match => match[1]), ['reveal.js?v=20260926-motion1']);
   assert.doesNotMatch(html, /오픈 준비 중|미리보기|접수 전 목업/);
   assert.match(html, /새 탭에서 신청 폼이 열립니다/);
   assert.match(html, /선착순 60명/);
@@ -37,7 +37,7 @@ test('all internal anchors and asset references resolve; operator link is retain
   for (const [, id] of html.matchAll(/href="#([^"]+)"/g)) assert.ok(ids.includes(id), id);
   for (const [, url] of html.matchAll(/(?:href|src)="([^"#][^"]*)"/g)) {
     const file = url.split('?')[0];
-    if (file.startsWith('/') || file.startsWith('https://')) continue;
+    if (file.startsWith('/') || file.startsWith('https://') || file.startsWith('sms:')) continue;
     assert.ok(fs.existsSync(path.join(__dirname, file)), file);
   }
   assert.match(html, /id="temporary-run-link" href="\/goldenbell\/run\/"/);
@@ -72,4 +72,10 @@ test('DNF BitBit is packaged locally with its license and decorations are nonint
   assert.match(html, /class="hero-glints" aria-hidden="true"/);
   assert.match(css, /\.hero-glints[^}]*pointer-events: none/);
   assert.match(css, /prefers-reduced-motion: reduce/);
+});
+
+test('contact links are accessible at the bottom of the event page', () => {
+  assert.match(html, /href="sms:01057075642"/);
+  assert.match(html, /href="https:\/\/www\.instagram\.com\/sxxng_hx\.10\/" target="_blank" rel="noopener noreferrer"/);
+  assert.match(html, /문의 사항은.*연락해 주시기 바랍니다/);
 });

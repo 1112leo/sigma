@@ -1,6 +1,6 @@
-import { defaultRuntime, validClockTime, validEventDate, normalizeRuntime, effectiveSequence, runtimePosition, activeItem, runtimeLog, roundProgress, eventClock } from './runtime.js?v=20260921-session';
+import { defaultRuntime, validClockTime, validEventDate, normalizeRuntime, effectiveSequence, runtimePosition, activeItem, runtimeLog, roundProgress, eventClock } from './runtime.js?v=20260926-break1';
 import { renderMath, richText, mathProjection } from './math.js?v=20260831-preparation5';
-import { parseQuestionImport, prepareQuestionImport, checkPreparation } from './preparation.js?v=20260831-preparation5';
+import { parseQuestionImport, prepareQuestionImport, checkPreparation } from './preparation.js?v=20260926-images1';
 
 const PRIVATE_STORAGE_KEY = 'sigma-goldenbell-v1';
 const PUBLIC_STORAGE_KEY = 'sigma-goldenbell-public-v2';
@@ -8,7 +8,8 @@ const AUTH_STORAGE_KEY = 'sigma-goldenbell-auth-v1';
 const AUTH_SESSION_KEY = 'sigma-goldenbell-session-v1';
 const AUTH_ATTEMPT_KEY = 'sigma-goldenbell-attempts-v1';
 const PROJECTOR_SESSION_KEY = 'sigma-goldenbell-projector-session-v1';
-const PRE_IMPORT_BACKUP_KEY = 'sigma-goldenbell-pre-import-v1';
+const IMAGE_DB_NAME = 'sigma-goldenbell-images-v1';
+const IMAGE_STORE_NAME = 'images';
 const CHANNEL_NAME = 'sigma-goldenbell-projector-v2';
 const SCHEMA_VERSION = 3;
 const questionEnums = {
@@ -21,7 +22,6 @@ const questionEnums = {
 const PBKDF2_ITERATIONS = 210000;
 const MAX_IMAGE_FILE_BYTES = 12 * 1024 * 1024;
 const MAX_IMAGE_DATA_LENGTH = 900 * 1024;
-const MAX_TOTAL_IMAGE_DATA_LENGTH = 3 * 1024 * 1024;
 const SCREEN_MODES = new Set(['lobby', 'opening', 'rules', 'question', 'break', 'ending', 'screen']);
 const TABS = new Set(['live', 'questions', 'sequence', 'settings', 'preparation']);
 const screenStyles = { blue: '블루', gold: '골드', green: '그린', plain: '기본' };
@@ -70,6 +70,9 @@ let preflightResult = null;
 let preflightBusy = false;
 let backupReadToken = 0;
 let preparationEpoch = 0;
+let privateSyncToken = 0;
+let publicSyncToken = 0;
+let imageDbPromise = null;
 const startupChecks = new Set();
 
 function createId() {
@@ -209,6 +212,7 @@ function normalizePresentation(raw, next) {
   } else next.sequenceIndex = next.sequence.length ? Math.round(clampNumber(raw.sequenceIndex, 0, next.sequence.length - 1, 0)) : -1;
   next.runtime = normalizeRuntime(raw.runtime, next.sequence.length);
   if (next.runtime.run.active && next.runtime.run.signature !== JSON.stringify(next.sequence)) { next.runtime.run = defaultRuntime().run; next.runtime.mainResume = null; }
+  if (next.runtime.break) next.sequenceIndex = next.runtime.break.sequenceIndex;
   // Retire old interventions without changing the user's configured slides or questions.
   const oldOverlay = next.runtime.overlay;
   if (oldOverlay) {
@@ -233,7 +237,6 @@ function normalizePresentation(raw, next) {
     next.answerVisible = false;
     next.timer = { remaining: 0, running: false, endAt: null };
   }
-  if (next.displayMode === 'question' && raw.timer?.running && Number.isFinite(Number(raw.timer.endAt)) && Number(raw.timer.endAt) > 0 && Number(raw.timer.endAt) <= Date.now()) runtimeLog(next, 'timer-end', `${item.questionId} 시간 종료 (재접속 확인)`);
   return next;
 }
 
@@ -256,8 +259,86 @@ function safeImage(value) {
   return /^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(value) ? value : '';
 }
 
-function totalImageDataLength(questions) {
-  return questions.reduce((total, question) => total + (question.image?.length || 0), 0);
+function openImageDb() {
+  if (imageDbPromise) return imageDbPromise;
+  if (!globalThis.indexedDB) return Promise.reject(new Error('image-db-unavailable'));
+  imageDbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(IMAGE_DB_NAME, 1);
+    request.onupgradeneeded = () => request.result.createObjectStore(IMAGE_STORE_NAME);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('image-db-open-failed'));
+    request.onblocked = () => reject(new Error('image-db-blocked'));
+  }).catch(error => { imageDbPromise = null; throw error; });
+  return imageDbPromise;
+}
+
+async function imageOperation(mode, action) {
+  const db = await openImageDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(IMAGE_STORE_NAME, mode);
+    let result;
+    const request = action(transaction.objectStore(IMAGE_STORE_NAME));
+    request.onsuccess = () => { result = request.result; };
+    transaction.oncomplete = () => resolve(result);
+    transaction.onerror = () => reject(transaction.error || new Error('image-db-write-failed'));
+    transaction.onabort = () => reject(transaction.error || new Error('image-db-aborted'));
+  });
+}
+
+async function storeImage(data, id = createId()) {
+  if (!safeImage(data)) throw new Error('invalid-image');
+  await imageOperation('readwrite', store => store.put(data, id));
+  return id;
+}
+
+function readImage(id) { return imageOperation('readonly', store => store.get(id)); }
+function removeImage(id) { return imageOperation('readwrite', store => store.delete(id)); }
+
+function storedState(source) {
+  return { ...source, questions: source.questions.map(({ image, ...question }) => question) };
+}
+
+function imageIds(source) { return new Set(source.questions.map(question => question.imageId).filter(Boolean)); }
+
+async function removeUnusedImages(before, after) {
+  const retained = imageIds(after);
+  for (const id of imageIds(before)) if (!retained.has(id)) {
+    try { await removeImage(id); } catch { toast('사용하지 않는 사진을 정리하지 못했습니다. 다음 저장 전에 브라우저 저장 공간을 확인해주세요.'); }
+  }
+}
+
+async function prepareImages(source, { fresh = false } = {}) {
+  const created = [];
+  try {
+    for (const question of source.questions) {
+      if (question.image) {
+        if (fresh || !question.imageId) {
+          question.imageId = await storeImage(question.image);
+          created.push(question.imageId);
+        } else if (!safeImage(question.image)) throw new Error('invalid-image');
+      } else if (question.imageId && fresh) {
+        throw new Error(`missing-backup-image:${question.id}`);
+      } else if (question.imageId) {
+        question.image = safeImage(await readImage(question.imageId));
+        if (!question.image) throw new Error(`missing-image:${question.id}`);
+      }
+    }
+    return created;
+  } catch (error) {
+    await Promise.allSettled(created.map(removeImage));
+    throw error;
+  }
+}
+
+async function completeBackup(source) {
+  const backup = structuredClone(source);
+  for (const question of backup.questions) {
+    if (safeImage(question.image)) continue;
+    if (!question.imageId) continue;
+    question.image = safeImage(await readImage(question.imageId));
+    if (!question.image) throw new Error(`missing-image:${question.id}`);
+  }
+  return backup;
 }
 
 function hasProjectionOverflow(question) {
@@ -318,6 +399,7 @@ function migrateQuestion(candidate, index = 0, now = new Date().toISOString()) {
     timeLimit,
     seconds: timeLimit,
     image: safeImage(item.image),
+    imageId: typeof item.imageId === 'string' && item.imageId.length <= 200 ? item.imageId : '',
     imageAlt: safeText(item.imageAlt, 160),
     createdAt,
     updatedAt: validTimestamp(item.updatedAt) ? item.updatedAt : createdAt,
@@ -472,6 +554,7 @@ function buildPublicState() {
       answer: mayShowAnswer ? projectionText(question.answer, 200) : '',
       explanation: mayShowAnswer ? projectionText(question.explanation, 400) : '',
       image: safeImage(question.image),
+      imageId: question.imageId || '',
       imageAlt: safeText(question.imageAlt, 160),
     } : null,
     answerVisible: mayShowAnswer,
@@ -505,7 +588,9 @@ function publishPublicState({ broadcast = true, locked = false } = {}) {
   let stored = false;
   let sent = false;
   try {
-    localStorage.setItem(PUBLIC_STORAGE_KEY, JSON.stringify(next));
+    const cached = structuredClone(next);
+    if (cached.question) cached.question.image = '';
+    localStorage.setItem(PUBLIC_STORAGE_KEY, JSON.stringify(cached));
     stored = true;
   } catch {
     // Never leave a previous answer in the cache after a failed screen/lock update.
@@ -525,6 +610,7 @@ function saveState({ broadcast = true, locked = false } = {}) {
     if (!confirm('구성 변경으로 진행 기록만 초기화합니다. 문제·사진은 유지됩니다. 저장할까요?')) return false;
     state.runtime.run = defaultRuntime().run;
     state.runtime.mainResume = null;
+    state.runtime.break = null;
     stopTimerIn(state);
     state.answerVisible = false;
   }
@@ -532,8 +618,12 @@ function saveState({ broadcast = true, locked = false } = {}) {
     toast('기존 데이터 보호 중입니다. 원본 JSON을 백업하고 호환되는 백업을 불러와주세요.');
     return false;
   }
+  if (state.questions.some(question => question.image && !question.imageId)) {
+    toast('사진 저장이 아직 완료되지 않았습니다. 다시 시도해주세요.');
+    return false;
+  }
   try {
-    localStorage.setItem(PRIVATE_STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(PRIVATE_STORAGE_KEY, JSON.stringify(storedState(state)));
   } catch {
     toast('브라우저 저장 공간이 부족합니다. 사진을 줄이거나 JSON 백업 후 정리해주세요.');
     return false;
@@ -542,18 +632,34 @@ function saveState({ broadcast = true, locked = false } = {}) {
   return true;
 }
 
-function syncPrivateState(next) {
+async function syncPrivateState(next) {
   if (!state || IS_SCREEN) return;
-  state = normalizeState(next);
+  const token = ++privateSyncToken;
+  const candidate = normalizeState(next);
+  let created = [];
+  let failed = false;
+  try { created = await prepareImages(candidate); }
+  catch { failed = true; }
+  if (token !== privateSyncToken || !state) return;
+  persistenceBlocked = failed;
+  state = candidate;
+  if (!persistenceBlocked && created.length) saveState({ broadcast: false });
   render();
   syncTicker();
 }
 
 function syncPublicState(next) {
   if (!IS_SCREEN || !next || typeof next !== 'object' || !SCREEN_SESSION_ID || next.sessionId !== SCREEN_SESSION_ID) return;
+  const token = ++publicSyncToken;
   publicState = next;
   renderScreen();
   syncTicker();
+  if (next.question?.imageId && !next.question.image) readImage(next.question.imageId).then(image => {
+    if (token !== publicSyncToken || !image || publicState !== next) return;
+    next.question.image = safeImage(image);
+    renderScreen();
+    syncTicker();
+  }).catch(() => {});
 }
 
 channel?.addEventListener('message', event => {
@@ -577,6 +683,7 @@ function update(mutator, options = {}) {
     if (!confirm('구성을 변경하면 행사 진행이 종료되고 진행 기록만 초기화됩니다. 문제·사진은 삭제되지 않습니다. 변경할까요?')) { state = previous; render(); return false; }
     state.runtime.run = defaultRuntime().run;
     state.runtime.mainResume = null;
+    state.runtime.break = null;
     stopTimerIn(state);
     state.answerVisible = false;
   }
@@ -666,7 +773,6 @@ function refreshTimerDom() {
         captureQuestionDraft();
         const saved = update(next => {
           next.timer = { remaining: 0, running: false, endAt: null };
-          runtimeLog(next, 'timer-end', `${activeItem(next)?.questionId || ''} 시간 종료`);
         }, { render: state.tab === 'live' && !modal && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) });
         timerSaveRetryAt = saved ? 0 : Date.now() + 5000;
       }
@@ -812,7 +918,10 @@ async function handleAuthSubmit(event) {
     }
     authMessage = '';
     state = loadPrivateState();
-    saveState();
+    if (!persistenceBlocked) {
+      try { await prepareImages(state); saveState(); }
+      catch { persistenceBlocked = true; }
+    }
     render();
     syncTicker();
   } catch (error) {
@@ -945,6 +1054,7 @@ function roundFinishDestination() {
 }
 
 function presentationNextAction() {
+  if (state.runtime.break) return { kind: 'break', target: state.sequenceIndex, label: '휴식 종료 · 원래 위치로' };
   if (!state.sequence.length) return { kind: 'none', target: -1, label: '행사 구성을 먼저 추가하세요' };
   const start = state.runtime.run.specialStart;
   if (state.runtime.run.active && start !== null && nextUncompleted(state.sequenceIndex + 1) >= specialRangeEnd(start)) {
@@ -972,15 +1082,17 @@ function renderLive() {
   const position = total ? cursor + 1 : 0;
   const remaining = getTimerRemaining(state.timer);
   const nextAction = presentationNextAction();
+  const resting = Boolean(state.runtime.break);
   return `<div class="live-layout"><section class="stack"><article class="card session-bar ${state.runtime.run.active ? 'is-live' : ''}"><div class="section-head"><strong>${state.runtime.run.active ? '진행 중' : '미리보기 · 연습'}</strong><button class="btn primary" data-action="${state.runtime.run.active ? 'finish-run' : 'start-run'}">${state.runtime.run.active ? '진행 종료' : '이 위치에서 진행 시작'}</button></div></article>
     <article class="card stage-card"><div class="section-head stage-heading"><div><p class="eyebrow">프로젝터 미리보기 · ${position} / ${total}</p><h2>${esc(question ? question.title : currentScreen().title)}</h2><span class="stage-state">${question ? state.answerVisible ? '정답 공개 중' : '문제 화면' : '안내 화면'}</span></div><button class="btn sm" data-action="open-screen">새 창으로 열기</button></div>
-    <div class="stage-preview" aria-label="프로젝터 화면 미리보기">${renderPreview()}</div><p class="operator-hint">${operatorHint()}</p>
+    <div class="stage-preview" aria-label="프로젝터 화면 미리보기">${renderPreview()}</div><p class="operator-hint">${resting ? '휴식 중입니다. 원래 위치로 돌아가려면 휴식 종료를 누르세요.' : operatorHint()}</p>
+    ${resting ? '<button class="btn primary" data-action="resume-break">휴식 종료 · 원래 위치로</button>' : ''}
     ${question ? `<div class="primary-controls"><button class="btn timer-toggle" data-action="timer-toggle" ${state.answerVisible ? 'disabled' : ''}><span>${state.timer.running ? '타이머 일시정지' : '타이머 시작'}</span><kbd>Space</kbd></button><button class="btn presentation-next" data-action="toggle-answer" ${question.answer ? '' : 'disabled'}><span>${state.answerVisible ? '문제로 돌아가기' : '정답 공개'}</span><kbd>A</kbd></button></div>` : ''}
-    <div class="transport-controls sequence-transport"><button class="btn" data-action="prev" ${cursor <= 0 ? 'disabled' : ''}>← 이전 항목</button><button class="btn primary next-destination" data-action="next" ${nextAction.kind === 'none' ? 'disabled' : ''}><span>${esc(nextAction.label)}</span><kbd>→</kbd></button></div>
+    <div class="transport-controls sequence-transport"><button class="btn" data-action="prev" ${cursor <= 0 || resting ? 'disabled' : ''}>← 이전 항목</button><button class="btn primary next-destination" data-action="next" ${nextAction.kind === 'none' ? 'disabled' : ''}><span>${esc(nextAction.label)}</span><kbd>→</kbd></button></div>
     ${question ? '<div class="row"><button class="btn sm ghost" data-action="reset-timer">시간 초기화 (R)</button><button class="btn sm ghost" data-action="edit-current">현재 문제 수정</button></div>' : ''}</article>
     <details class="card operator-guide"><summary>PPT 조작자를 위한 안내 · 단축키</summary><ol><li>프로젝터를 열고, 연습할 때는 슬라이드 모드를 그대로 사용하세요.</li><li>행사 시작 위치를 선택한 뒤 ‘진행 시작’을 누르세요.</li><li>문제 낭독 → 타이머 시작 → 정답 공개 → 판정 후 다음 순서입니다.</li><li>특별 라운드는 시작 안내에서 열립니다. ‘라운드 종료’를 누르면 안내와 문제 전체가 완료 처리됩니다.</li></ol><p><kbd>Space</kbd> 타이머　<kbd>A</kbd> 정답 / 문제　<kbd>←</kbd><kbd>→</kbd> 이동</p><p>완료한 화면도 직접 선택해 다시 볼 수 있습니다. 구성 변경·진행 종료 시 진행 기록만 초기화되며, 문제와 사진은 유지됩니다.</p><button class="btn sm" data-action="export">JSON 백업</button></details>
     </section><aside class="stack control-rail">${renderSlideSelector()}
-    <article class="card slide-jump"><h2>슬라이드 이동</h2><label for="slide-jump">행사 구성 순서</label><select id="slide-jump">${liveSequence.map((item, index) => `<option value="${index}" ${index === cursor ? 'selected' : ''}>${index + 1}. ${esc(sequenceItemLabel(item))}${state.runtime.run.active && state.runtime.run.completed.includes(index) ? ' · 완료' : ''}</option>`).join('')}</select><button class="btn" data-action="slide-jump" ${total ? '' : 'disabled'}>선택한 슬라이드로 이동</button></article>
+    <article class="card slide-jump"><h2>슬라이드 이동</h2><label for="slide-jump">행사 구성 순서</label><select id="slide-jump">${liveSequence.map((item, index) => `<option value="${index}" ${index === cursor ? 'selected' : ''}>${index + 1}. ${esc(sequenceItemLabel(item))}${state.runtime.run.active && state.runtime.run.completed.includes(index) ? ' · 완료' : ''}</option>`).join('')}</select><button class="btn" data-action="slide-jump" ${total && !resting ? '' : 'disabled'}>선택한 슬라이드로 이동</button></article>
     ${question ? `<article class="card timer-card"><div class="timer-status"><span data-timer-label>${remaining <= 0 ? '시간 종료' : '남은 시간'}</span><span>${question.timeLimit}초 문제</span></div><div class="timer ${timerClass(state.timer)}" data-timer-value>${formatTime(remaining)}</div><form id="manual-timer-form" class="manual-timer"><label for="manual-timer">시간 직접 설정(초)</label><input id="manual-timer" type="number" min="0" max="600" step="1" value="${Math.ceil(remaining)}"><button class="btn sm" type="submit">적용</button></form><div class="timer-track"><div data-timer-progress></div></div><div class="timer-adjust"><button class="btn sm" data-action="timer-minus">-5초</button><button class="btn sm" data-action="reset-timer">초기화</button><button class="btn sm" data-action="timer-plus">+5초</button></div></article>` : '<article class="card note-card"><strong>안내 화면 송출 중</strong><p>문제·정답·타이머는 표시하지 않습니다. 다음 항목으로 이동해 진행하세요.</p></article>'}
     </aside></div>`;
 }
@@ -1033,12 +1145,13 @@ function renderSlideSelector() {
     return `<button class="mode-button round-button ${current ? 'active' : ''} ${completed ? 'completed' : ''}" data-special-round="${index}" aria-pressed="${current}"><span>${esc(label)}</span>${completed || current ? `<small>${completed ? '완료 · 다시 보기' : '현재 라운드'}</small>` : ''}</button>`;
   }).join('')}</div>${renderRoundExit()}<div class="mode-grid screen-modes">${Object.entries(legacyScreenIds).map(([mode, id]) => {
     const selected = active?.type === 'screen' && active.screenId === id;
-    const available = state.sequence.some(item => item.type === 'screen' && item.screenId === id);
+    const available = mode === 'break' || state.sequence.some(item => item.type === 'screen' && item.screenId === id);
     return `<button class="mode-button ${selected ? 'active' : ''}" data-screen-mode="${mode}" aria-pressed="${selected}" ${available ? '' : 'disabled'}>${esc(screenModeMeta[mode].shortLabel)}</button>`;
   }).join('')}</div><p class="sub">선택한 위치부터 행사 구성 순서대로 진행합니다.</p></article>`;
 }
 
 function renderRoundExit() {
+  if (state.runtime.break) return '';
   const active = state.runtime.run.active && state.runtime.run.specialStart !== null;
   const target = active ? roundFinishDestination() : state.runtime.mainResume?.index;
   if (!active && target === undefined) return '';
@@ -1047,18 +1160,19 @@ function renderRoundExit() {
 }
 
 function startRun() {
-  if (state.runtime.run.active || !state.sequence.length || !mayNavigate()) return;
+  if (state.runtime.run.active || state.runtime.break || !state.sequence.length || !mayNavigate()) return;
   update(next => {
     stopTimerIn(next);
     next.runtime.mainResume = null;
     next.runtime.run = { active: true, completed: [], specialStart: specialStartAt(next.sequenceIndex), signature: JSON.stringify(next.sequence) };
     next.answerVisible = false;
+    runtimeLog(next, 'run-start', '진행 시작');
   });
 }
 
 function finishRun() {
   if (!state.runtime.run.active || !confirm('진행을 종료하고 완료 기록을 초기화할까요? 슬라이드 구성은 유지됩니다.')) return;
-  update(next => { stopTimerIn(next); next.runtime.run = defaultRuntime().run; next.runtime.mainResume = null; next.answerVisible = false; });
+  update(next => { runtimeLog(next, 'run-end', '진행 종료'); stopTimerIn(next); next.runtime.run = defaultRuntime().run; next.runtime.mainResume = null; next.runtime.break = null; next.answerVisible = false; });
 }
 
 function specialRangeEnd(start) {
@@ -1087,6 +1201,7 @@ function nextUncompleted(position) {
 }
 
 function finishSpecialRound() {
+  if (state.runtime.break) return;
   const start = state.runtime.run.specialStart;
   if (!state.runtime.run.active || start === null || !mayNavigate()) return;
   const end = specialRangeEnd(start), target = roundFinishDestination();
@@ -1099,6 +1214,7 @@ function finishSpecialRound() {
       activateSequence(next, target);
       if (saved && target === saved.index) next.timer.remaining = saved.remaining;
       next.runtime.run.specialStart = specialStartAt(target);
+      runtimeLog(next, 'sequence-move', `${target + 1}번 항목으로 이동`);
     } else stopTimerIn(next);
   });
 }
@@ -1109,16 +1225,19 @@ function specialRoundEntries() {
 }
 
 function startSpecialRound(index) {
+  if (state.runtime.break) return;
   if (!specialRoundEntries().some(row => row.index === index) || !mayNavigate()) return;
   update(next => {
     const q = currentQuestion();
     if (q && ['basic', 'hard'].includes(questionNavigationGroup(q))) next.runtime.mainResume = { index: next.sequenceIndex, questionId: q.id, remaining: getTimerRemaining(next.timer) };
     activateSequence(next, index);
     if (next.runtime.run.active) next.runtime.run.specialStart = index;
+    runtimeLog(next, 'sequence-move', `${index + 1}번 항목으로 이동`);
   });
 }
 
 function resumeMain() {
+  if (state.runtime.break) return;
   if (state.runtime.run.active && state.runtime.run.specialStart !== null) return finishSpecialRound();
   const saved = state.runtime.mainResume;
   if (!saved || state.sequence[saved.index]?.questionId !== saved.questionId || !mayNavigate()) return;
@@ -1126,10 +1245,12 @@ function resumeMain() {
     activateSequence(next, saved.index);
     next.timer.remaining = saved.remaining;
     next.runtime.mainResume = null;
+    runtimeLog(next, 'sequence-move', `${saved.index + 1}번 항목으로 이동`);
   });
 }
 
 function jumpGroupMode(group) {
+  if (state.runtime.break) return;
   if (['revival', 'final'].includes(group)) {
     const entry = specialRoundEntries().find(row => group === 'final' ? state.sequence[row.index].screenId === 'final-start' : state.sequence[row.index].screenId.startsWith('revival'));
     return entry ? startSpecialRound(entry.index) : toast('행사 구성에 라운드 시작 안내를 먼저 추가해주세요.');
@@ -1332,12 +1453,6 @@ function mayNavigate() {
   return !state.timer.running || getTimerRemaining(state.timer) <= 0 || confirm('타이머가 실행 중입니다. 시간을 멈추고 이동할까요?');
 }
 
-function logCurrentItem(next) {
-  const item = activeItem(next);
-  runtimeLog(next, item?.type === 'question' ? 'question-start' : 'screen', item?.type === 'question' ? `${item.questionId} 시작` : `${sequenceItemLabel(item)} 화면`);
-}
-
-
 function goSequence(index, remember = false) {
   if (!Number.isInteger(index) || index < 0 || index >= state.sequence.length) return;
   const position = effectiveSequence(state).findIndex(item => !item.insertionId && item.baseIndex === index);
@@ -1345,6 +1460,7 @@ function goSequence(index, remember = false) {
 }
 
 function goRuntimePosition(position, remember = false) {
+  if (state.runtime.break) return;
   const target = effectiveSequence(state)[position];
   if (!target || !mayNavigate()) return;
   return update(next => {
@@ -1354,7 +1470,6 @@ function goRuntimePosition(position, remember = false) {
     activateCurrentItem(next);
     if (next.runtime.run.active) next.runtime.run.specialStart = specialStartAt(next.sequenceIndex);
     runtimeLog(next, 'sequence-move', `${position + 1}번 항목으로 이동`);
-    logCurrentItem(next);
   });
 }
 
@@ -1494,9 +1609,11 @@ function moveQuestion(id, direction) {
 }
 
 function importOptions() {
-  return { enums: questionEnums, migrate: migrateQuestion, validTime: validTimeLimit, safeImage, maxImages: MAX_TOTAL_IMAGE_DATA_LENGTH };
+  return { enums: questionEnums, migrate: migrateQuestion, validTime: validTimeLimit, safeImage };
 }
 function clearPreparationDrafts() {
+  const unsavedImageId = modal?.question?.imageId;
+  if (unsavedImageId && state && !imageIds(state).has(unsavedImageId)) removeImage(unsavedImageId).catch(() => {});
   preparationEpoch++;
   importDraft = null;
   preflightResult = null;
@@ -1541,9 +1658,27 @@ async function brokenImages(questions) {
   }
   return failed;
 }
+async function storeChangedImages(questions, previousQuestions) {
+  const previous = new Map(previousQuestions.map(question => [question.id, question]));
+  const created = [];
+  try {
+    for (const question of questions) {
+      if (!question.image) { question.imageId = ''; continue; }
+      const prior = previous.get(question.id);
+      if (prior?.imageId && prior.imageId === question.imageId && prior.image === question.image) continue;
+      question.imageId = await storeImage(question.image);
+      created.push(question.imageId);
+    }
+    return created;
+  } catch (error) {
+    await Promise.allSettled(created.map(removeImage));
+    throw error;
+  }
+}
 function commitQuestionBatch(result, mode) {
   if (result.errors.length || persistenceBlocked) return false;
   backupReadToken++;
+  const before = structuredClone(state);
   const applied = update(next => {
     next.questions = result.questions;
     if (mode === 'replace') {
@@ -1560,9 +1695,8 @@ function commitQuestionBatch(result, mode) {
       if (next.displayMode !== 'question') activateCurrentItem(next);
       else next.displayMode = 'question';
     } else next.displayMode = 'screen';
-    runtimeLog(next, 'question-import', `문제 ${mode} · ${result.prepared.length}개`);
   });
-  if (applied) { clearPreparationDrafts(); render(); toast('문제를 적용했습니다. 행사 구성과 점검 결과를 확인해주세요.'); }
+  if (applied) { removeUnusedImages(before, state); clearPreparationDrafts(); render(); toast('문제를 적용했습니다. 행사 구성과 점검 결과를 확인해주세요.'); }
   return applied;
 }
 async function applyBatch() {
@@ -1581,8 +1715,9 @@ async function applyBatch() {
     if (result.errors.length) return;
     if (draft.mode === 'replace' && !confirm('전체 문제를 교체할까요? 타이머와 정답 공개 상태는 초기화됩니다. 기존 행사 구성은 유지되어 누락 참조가 생길 수 있습니다. 적용 전 JSON 백업을 저장합니다.')) return;
     if (draft.mode !== 'replace' && !mayNavigate()) return;
-    if (!downloadBackup('before-question-import')) throw new Error('JSON 백업을 시작하지 못해 문제 가져오기를 중단했습니다.');
-    commitQuestionBatch(result, draft.mode);
+    if (!await downloadBackup('before-question-import')) throw new Error('JSON 백업을 시작하지 못해 문제 가져오기를 중단했습니다.');
+    const created = await storeChangedImages(result.questions, state.questions);
+    if (!commitQuestionBatch(result, draft.mode)) await Promise.allSettled(created.map(removeImage));
   } catch (error) { draft.error = error.message; }
   finally { draft.busy = false; if (state) render(); }
 }
@@ -1762,7 +1897,6 @@ function bindEvents() {
   });
   document.querySelectorAll('[data-move-q]').forEach(element => element.addEventListener('click', () => moveQuestion(element.dataset.moveQ, Number(element.dataset.direction))));
   document.querySelectorAll('[data-tab]').forEach(element => element.addEventListener('click', () => update(next => { next.tab = element.dataset.tab; })));
-  document.querySelectorAll('[data-screen-mode]').forEach(element => element.addEventListener('click', () => setScreenMode(element.dataset.screenMode)));
   document.querySelectorAll('[data-action]').forEach(element => {
     const action = element.dataset.action;
     if (element.tagName === 'INPUT' && action === 'import') element.addEventListener('change', importData);
@@ -1791,11 +1925,12 @@ function handleAction(action) {
   if (action === 'preflight') return runPreflight();
   if (action === 'start-run') return startRun();
   if (action === 'finish-run') return finishRun();
+  if (action === 'resume-break') return resumeBreak();
   if (action === 'finish-round') return finishSpecialRound();
   if (action === 'resume-main') return resumeMain();
   if (action === 'slide-jump') return goRuntimePosition(Number(document.getElementById('slide-jump').value));
   if (action === 'clear-logs' && confirm('진행 로그를 초기화할까요? 예비문제 사용 기록과 무효 표시는 유지됩니다.')) return update(next => { next.runtime.logs = []; });
-  if (action === 'event-start' && (!state.runtime.startedAt || confirm('행사 경과시간을 지금부터 다시 측정할까요?'))) return update(next => { next.runtime.startedAt = new Date().toISOString(); runtimeLog(next, 'event-start', '행사 시간 측정 시작'); });
+  if (action === 'event-start' && (!state.runtime.startedAt || confirm('행사 경과시간을 지금부터 다시 측정할까요?'))) return update(next => { next.runtime.startedAt = new Date().toISOString(); });
   if (action === 'add-screen') return openScreenEditor();
   if (action === 'sequence-add-question') return appendSequence('question', document.getElementById('sequence-question').value);
   if (action === 'sequence-add-screen') return appendSequence('screen', document.getElementById('sequence-screen').value);
@@ -1818,28 +1953,41 @@ function handleAction(action) {
   if (action === 'timer-plus') return adjustTimer(5);
   if (action === 'edit-current' && question) return openQuestion(question.id);
   if (action === 'add-question') return openQuestion();
-  if (action === 'close-modal' || action === 'close-backdrop') { modal = null; return render(); }
+  if (action === 'close-modal' || action === 'close-backdrop') {
+    const unsavedImageId = modal?.question?.imageId;
+    if (unsavedImageId && !imageIds(state).has(unsavedImageId)) removeImage(unsavedImageId).catch(() => {});
+    modal = null;
+    return render();
+  }
   if (action === 'save-question') return saveQuestion();
   if (action === 'remove-question-image' && modal?.type === 'question') {
     captureQuestionDraft();
+    const unsavedImageId = modal.question.imageId;
     modal.imageRequest = (modal.imageRequest || 0) + 1;
     modal.imageLoading = false;
     modal.question.image = '';
+    modal.question.imageId = '';
     modal.question.imageAlt = '';
+    if (unsavedImageId && !imageIds(state).has(unsavedImageId)) removeImage(unsavedImageId).catch(() => {});
     return render();
   }
   if (action === 'change-pin') return changePin();
-  if (action === 'reset-all' && confirm('문제와 행사 설정을 모두 초기화할까요? 진행 PIN은 유지됩니다.')) {
-    backupReadToken++;
-    if (!downloadBackup('before-reset')) return;
-    const previous = state;
-    const wasBlocked = persistenceBlocked;
-    persistenceBlocked = false;
-    state = defaultState();
-    if (!saveState()) { state = previous; persistenceBlocked = wasBlocked; return; }
-    clearPreparationDrafts();
-    return render();
-  }
+  if (action === 'reset-all') return resetAll();
+}
+
+async function resetAll() {
+  if (!confirm('문제와 행사 설정을 모두 초기화할까요? 진행 PIN은 유지됩니다.')) return;
+  const previous = state;
+  const token = ++backupReadToken;
+  if (!await downloadBackup('before-reset') || token !== backupReadToken || state !== previous || !isUnlocked()) return;
+  const wasBlocked = persistenceBlocked;
+  privateSyncToken++;
+  persistenceBlocked = false;
+  state = defaultState();
+  if (!saveState()) { state = previous; persistenceBlocked = wasBlocked; return; }
+  removeUnusedImages(previous, state);
+  clearPreparationDrafts();
+  render();
 }
 
 function openScreen() {
@@ -1853,6 +2001,7 @@ function openScreen() {
 
 function lockConsole() {
   backupReadToken++;
+  privateSyncToken++;
   clearPreparationDrafts();
   if (state.timer.running) state.timer.remaining = getTimerRemaining(state.timer);
   state.timer.running = false;
@@ -1867,7 +2016,33 @@ function lockConsole() {
   render();
 }
 
+function startBreak() {
+  if (state.runtime.break || !state.sequence.length) return;
+  update(next => {
+    stopTimerIn(next);
+    next.runtime.break = { active: true, sequenceIndex: next.sequenceIndex, remaining: next.timer.remaining, answerVisible: next.answerVisible };
+    next.answerVisible = false;
+    next.displayMode = 'screen';
+  });
+}
+
+function resumeBreak() {
+  if (!state.runtime.break) return;
+  update(next => {
+    const rest = next.runtime.break;
+    next.runtime.break = null;
+    next.sequenceIndex = rest.sequenceIndex;
+    activateCurrentItem(next);
+    if (next.displayMode === 'question') {
+      next.timer.remaining = rest.remaining;
+      next.answerVisible = rest.answerVisible;
+    }
+  });
+}
+
 function setScreenMode(mode) {
+  if (mode === 'break') return state.runtime.break ? resumeBreak() : startBreak();
+  if (state.runtime.break) return;
   const screenId = legacyScreenIds[mode];
   const index = state.sequence.findIndex(item => item.type === 'screen' && item.screenId === screenId);
   if (index < 0) return toast('행사 구성에 해당 화면을 먼저 추가해주세요.');
@@ -1875,6 +2050,7 @@ function setScreenMode(mode) {
 }
 
 function advancePresentation() {
+  if (state.runtime.break) return resumeBreak();
   const action = presentationNextAction();
   if (action.kind === 'round') return finishSpecialRound();
   if (action.kind === 'end') return finishRun();
@@ -1923,7 +2099,6 @@ function pauseTimer() {
   if (!state.timer.running) return;
   update(next => {
     stopTimerIn(next);
-    runtimeLog(next, 'timer-pause', `${activeItem(next)?.questionId || ''} 타이머 일시정지`);
   });
 }
 
@@ -1933,7 +2108,6 @@ function resetTimer() {
   if (state.timer.running && getTimerRemaining() > 0 && !confirm('진행 중인 타이머를 멈추고 문제의 제한시간으로 초기화할까요?')) return;
   update(next => {
     next.timer = { remaining: question.timeLimit, running: false, endAt: null };
-    runtimeLog(next, 'timer-reset', `${question.id} 타이머 초기화`);
   });
 }
 
@@ -1947,7 +2121,6 @@ function setTimerValue(value) {
   if (!currentQuestion() || !Number.isFinite(value) || value < 0 || value > 600) return;
   update(next => {
     const running = next.timer.running && value > 0;
-    if (next.timer.running && value <= 0) runtimeLog(next, 'timer-end', `${activeItem(next)?.questionId} 시간 종료`);
     next.timer = { remaining: value, running, endAt: running ? Date.now() + value * 1000 : null };
   });
 }
@@ -2030,17 +2203,24 @@ async function handleQuestionImage(event) {
   const request = editor.imageRequest = (editor.imageRequest || 0) + 1;
   editor.imageLoading = true;
   render();
+  let storing = false;
   try {
     const image = await compressQuestionImage(file);
     if (modal !== editor || request !== editor.imageRequest) return;
+    storing = true;
+    const imageId = await storeImage(image);
+    if (modal !== editor || request !== editor.imageRequest) { removeImage(imageId).catch(() => {}); return; }
     captureQuestionDraft();
+    const previousImageId = editor.question.imageId;
     editor.question.image = image;
+    editor.question.imageId = imageId;
     editor.question.imageAlt ||= file.name.replace(/\.[^.]+$/, '');
+    if (previousImageId && !imageIds(state).has(previousImageId)) removeImage(previousImageId).catch(() => {});
     toast('사진을 추가했습니다. 문제 저장을 눌러 완료해주세요.');
   } catch {
     if (modal === editor && request === editor.imageRequest) {
       captureQuestionDraft();
-      toast('사진을 처리하지 못했습니다. 12MB 이하의 JPG·PNG·WebP를 사용해주세요.');
+      toast(storing ? '사진 저장소를 사용할 수 없습니다. 기존 사진은 유지됩니다.' : '사진을 처리하지 못했습니다. 12MB 이하의 JPG·PNG·WebP를 사용해주세요.');
     }
   } finally {
     if (modal === editor && request === editor.imageRequest) {
@@ -2078,12 +2258,9 @@ function saveQuestion() {
     // Renaming a key does not change slide order or invalidate completed positions.
     if (state.runtime.run.active && previous.runtime.run.signature === JSON.stringify(previous.sequence)) state.runtime.run.signature = JSON.stringify(state.sequence);
   }
-  if (totalImageDataLength(state.questions) > MAX_TOTAL_IMAGE_DATA_LENGTH) {
-    state = previous;
-    return toast('전체 사진 용량이 너무 큽니다. 사진을 줄인 뒤 다시 저장해주세요.');
-  }
   if (currentQuestion()?.id === data.id && !state.timer.running && previous.questions[index]?.timeLimit !== data.timeLimit) state.timer.remaining = data.timeLimit;
   if (!saveState()) { state = previous; return; }
+  removeUnusedImages(previous, state);
   modal = null;
   render();
   toast(hasProjectionOverflow(data) ? '저장했습니다. 긴 내용은 프로젝터에서 축약됩니다.' : data.usageStatus === 'active' && data.reviewStatus !== 'final' ? '저장했습니다. 사용 전 최종 검수를 완료해주세요.' : '문제를 저장했습니다.');
@@ -2096,7 +2273,8 @@ function deleteQuestion(id) {
   const impact = occurrences ? ` 행사 구성에 배치된 ${occurrences}개 항목도 함께 제거됩니다.` : '';
   if (!confirm(`'${state.questions[index].title}' 문제를 삭제할까요?${impact}`)) return;
   const currentId = currentQuestion()?.id;
-  update(next => {
+  const before = structuredClone(state);
+  const saved = update(next => {
     const oldSequence = next.sequence;
     const oldPosition = next.sequenceIndex;
     const removedBefore = oldSequence.slice(0, oldPosition).filter(item => item.type === 'question' && item.questionId === id).length;
@@ -2113,6 +2291,7 @@ function deleteQuestion(id) {
     next.currentIndex = currentId === id ? Math.min(index, Math.max(0, next.questions.length - 1)) : Math.max(0, next.questions.findIndex(question => question.id === currentId));
     if (deletingCurrent || !next.sequence.length) activateSequence(next, next.sequenceIndex);
   });
+  if (saved) removeUnusedImages(before, state);
 }
 
 function saveSettings() {
@@ -2165,17 +2344,28 @@ async function changePin() {
   }
 }
 
-function downloadBackup(label = '') {
+async function downloadBackup(label = '') {
   if (!state) return false;
   try {
-    const backup = persistenceBlocked ? localStorage.getItem(PRIVATE_STORAGE_KEY) : JSON.stringify(state, null, 2);
+    let backup;
+    let extension = 'json';
+    if (persistenceBlocked) {
+      const original = localStorage.getItem(PRIVATE_STORAGE_KEY);
+      if (!original) throw new Error('empty-backup');
+      let parsed;
+      try { parsed = JSON.parse(original); } catch { extension = 'txt'; }
+      backup = parsed && Array.isArray(parsed.questions)
+        ? JSON.stringify(await completeBackup(parsed), null, 2)
+        : original;
+      if (!parsed || !Array.isArray(parsed.questions)) extension = 'txt';
+    } else backup = JSON.stringify(await completeBackup(state), null, 2);
     if (!backup) throw new Error('empty-backup');
-    const blob = new Blob([backup], { type: 'application/json' });
+    const blob = new Blob([backup], { type: extension === 'json' ? 'application/json' : 'text/plain' });
     const anchor = document.createElement('a');
     const objectUrl = URL.createObjectURL(blob);
     anchor.href = objectUrl;
     const suffix = label ? `-${label}` : '';
-    anchor.download = `sigma-goldenbell${suffix}-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.download = `sigma-goldenbell${suffix}-${new Date().toISOString().slice(0, 10)}.${extension}`;
     try { anchor.click(); }
     finally { setTimeout(() => URL.revokeObjectURL(objectUrl), 60000); }
     return true;
@@ -2185,34 +2375,29 @@ function downloadBackup(label = '') {
   }
 }
 
-function exportData() {
-  if (downloadBackup()) toast('백업 다운로드를 요청했습니다. 다운로드 폴더에서 파일을 확인해주세요.');
+async function exportData() {
+  if (await downloadBackup()) toast('백업 다운로드를 요청했습니다. 다운로드 폴더에서 파일을 확인해주세요.');
 }
 
 function importData(event) {
   const file = event.target.files?.[0];
   if (!file) return;
-  if (file.size > 10 * 1024 * 1024) {
-    alert('10MB 이하의 백업 파일만 불러올 수 있습니다.');
-    event.target.value = '';
-    return;
-  }
   const reader = new FileReader();
   const token = ++backupReadToken;
-  reader.onload = () => {
+  reader.onload = async () => {
     if (token !== backupReadToken || !state || !isUnlocked()) return;
     try {
       const parsed = JSON.parse(reader.result);
       if (!parsed || !Array.isArray(parsed.questions)) throw new Error('invalid-backup');
       if (!confirm('현재 문제·슬라이드 설정을 백업 파일로 교체할까요? 기존 상태는 자동 백업됩니다.')) return;
-      if (!downloadBackup('before-import')) return;
+      if (!await downloadBackup('before-import')) return;
+      if (token !== backupReadToken || !state || !isUnlocked()) return;
       const imported = normalizeState(parsed);
-      if (totalImageDataLength(imported.questions) > MAX_TOTAL_IMAGE_DATA_LENGTH) {
-        throw new Error('image-storage-limit');
-      }
-      try { localStorage.setItem(PRE_IMPORT_BACKUP_KEY, persistenceBlocked ? localStorage.getItem(PRIVATE_STORAGE_KEY) : JSON.stringify(state)); } catch { }
+      const created = await prepareImages(imported, { fresh: true });
+      if (token !== backupReadToken || !state || !isUnlocked()) { await Promise.allSettled(created.map(removeImage)); return; }
       const previous = state;
       const wasBlocked = persistenceBlocked;
+      privateSyncToken++;
       persistenceBlocked = false;
       state = imported;
       state.timer.running = false;
@@ -2222,16 +2407,19 @@ function importData(event) {
       if (!saveState()) {
         state = previous;
         persistenceBlocked = wasBlocked;
+        await Promise.allSettled(created.map(removeImage));
         throw new Error('storage-limit');
       }
+      removeUnusedImages(previous, state);
       clearPreparationDrafts();
       render();
       syncTicker();
       toast('백업을 안전하게 불러왔습니다.');
     } catch (error) {
-      alert(error.message === 'image-storage-limit' || error.message === 'storage-limit'
-        ? '사진 용량이 너무 커 이 브라우저에 복원할 수 없습니다.'
-        : '올바른 골든벨 백업 JSON 파일이 아닙니다.');
+      alert(error.message === 'storage-limit' ? '브라우저 저장 공간이 부족해 복원하지 못했습니다. 기존 데이터는 유지됩니다.'
+        : error.message?.startsWith('missing-backup-image') ? '백업에 사진 데이터가 없어 완전 복원할 수 없습니다.'
+          : error.message?.includes('image-db') ? '사진 저장소를 사용할 수 없어 복원하지 못했습니다. 기존 데이터는 유지됩니다.'
+            : '올바른 골든벨 백업 JSON 파일이 아닙니다.');
     } finally {
       event.target.value = '';
     }
@@ -2282,17 +2470,21 @@ document.addEventListener('fullscreenchange', () => {
 
 if (IS_SCREEN) {
   publicState = loadPublicState();
-  renderScreen();
-  syncTicker();
+  if (publicState) syncPublicState(publicState);
+  else { renderScreen(); syncTicker(); }
   // A newly opened projector may have missed the last broadcast or read an older cache.
   if (SCREEN_SESSION_ID) {
     try { channel?.postMessage({ type: 'request-public-state', sessionId: SCREEN_SESSION_ID }); } catch { }
   }
 } else if (isUnlocked()) {
   state = loadPrivateState();
-  saveState({ broadcast: false });
-  render();
-  syncTicker();
+  if (!persistenceBlocked) {
+    prepareImages(state).then(() => { saveState({ broadcast: false }); render(); syncTicker(); }).catch(() => {
+      persistenceBlocked = true;
+      render();
+      syncTicker();
+    });
+  } else { render(); syncTicker(); }
 } else {
   renderAuth();
 }

@@ -1,6 +1,6 @@
 // Pure runtime helpers. The base sequence is never modified by live interventions.
 function defaultRuntime() {
-  return { run: { active: false, completed: [], specialStart: null, signature: '' }, mainResume: null, insertions: [], currentInsertionId: null, overlay: null, returns: [], invalidQuestions: [], reserveUses: [], logs: [], startedAt: null };
+  return { run: { active: false, completed: [], specialStart: null, signature: '' }, mainResume: null, break: null, insertions: [], currentInsertionId: null, overlay: null, returns: [], invalidQuestions: [], reserveUses: [], logs: [], startedAt: null };
 }
 
 function validClockTime(value) { return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value || ''); }
@@ -15,6 +15,9 @@ function normalizeRuntime(candidate, sequenceLength) {
   const base = defaultRuntime();
   if (raw.run?.active === true) base.run = { active: true, completed: Array.isArray(raw.run.completed) ? [...new Set(raw.run.completed.filter(index => Number.isInteger(index) && index >= 0 && index < sequenceLength))] : [], specialStart: Number.isInteger(raw.run.specialStart) && raw.run.specialStart >= 0 && raw.run.specialStart < sequenceLength ? raw.run.specialStart : null, signature: typeof raw.run.signature === 'string' ? raw.run.signature : '' };
   if (Number.isInteger(raw.mainResume?.index) && raw.mainResume.index >= 0 && raw.mainResume.index < sequenceLength) base.mainResume = { index: raw.mainResume.index, questionId: String(raw.mainResume.questionId || ''), remaining: Math.max(0, Math.min(600, Number(raw.mainResume.remaining) || 0)) };
+  if (raw.break?.active === true && Number.isInteger(raw.break.sequenceIndex) && raw.break.sequenceIndex >= 0 && raw.break.sequenceIndex < sequenceLength) {
+    base.break = { active: true, sequenceIndex: raw.break.sequenceIndex, remaining: Math.max(0, Math.min(600, Number(raw.break.remaining) || 0)), answerVisible: raw.break.answerVisible === true };
+  }
   for (const field of ['insertions', 'returns', 'invalidQuestions', 'reserveUses', 'logs']) {
     if (raw[field] !== undefined && !Array.isArray(raw[field])) throw new Error('invalid-runtime');
   }
@@ -31,7 +34,8 @@ function normalizeRuntime(candidate, sequenceLength) {
   base.returns = (raw.returns || []).map(row => ({ kind: row.kind === 'jump' ? 'jump' : 'override', sequenceIndex: Number.isInteger(row.sequenceIndex) ? row.sequenceIndex : 0, currentInsertionId: typeof row.currentInsertionId === 'string' ? row.currentInsertionId : null, overlay: item(row.overlay), remaining: Math.min(600, Math.max(0, Number(row.remaining) || 0)), answerVisible: Boolean(row.answerVisible) }));
   base.invalidQuestions = (raw.invalidQuestions || []).filter(row => typeof row?.questionId === 'string').map(row => ({ questionId: row.questionId, at: text(row.at) }));
   base.reserveUses = (raw.reserveUses || []).filter(row => typeof row?.questionId === 'string').map(row => ({ questionId: row.questionId, mode: row.mode === 'insert' ? 'insert' : 'immediate', at: text(row.at) }));
-  base.logs = (raw.logs || []).filter(row => row && typeof row.type === 'string').map(row => ({ at: text(row.at), type: text(row.type), label: text(row.label, 500) }));
+  const coreTypes = new Set(['run-start', 'run-end', 'sequence-move', 'timer-start', 'answer-reveal']);
+  base.logs = (raw.logs || []).filter(row => row && coreTypes.has(row.type)).map(row => ({ at: text(row.at), type: text(row.type), label: text(row.label, 500) }));
   base.startedAt = typeof raw.startedAt === 'string' && Number.isFinite(Date.parse(raw.startedAt)) ? raw.startedAt : null;
   return base;
 }
@@ -50,6 +54,7 @@ function runtimePosition(source) {
 
 function activeItem(source) {
   if (!source) return null;
+  if (source.runtime?.break?.active) return { type: 'screen', screenId: 'standby' };
   if (source.runtime?.overlay) return source.runtime.overlay;
   if (source.runtime?.currentInsertionId) {
     const row = source.runtime.insertions.find(item => item.id === source.runtime.currentInsertionId);
@@ -59,6 +64,7 @@ function activeItem(source) {
 }
 
 function runtimeLog(source, type, label) {
+  if (!source.runtime.run.active || !['run-start', 'run-end', 'sequence-move', 'timer-start', 'answer-reveal'].includes(type)) return;
   source.runtime.logs.push({ at: new Date().toISOString(), type, label: String(label).slice(0, 500) });
   if (source.runtime.logs.length > 2000) source.runtime.logs.shift();
 }

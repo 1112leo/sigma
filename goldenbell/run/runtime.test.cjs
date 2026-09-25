@@ -34,7 +34,7 @@ test('old interventions are retired on reload without changing questions or conf
   }
 });
 
-test('timer manual bounds, running adjustment cap, expiry logs once',()=>{
+test('timer manual bounds and running adjustment cap do not create detailed expiry logs',()=>{
   const h=fixture();
   for (const value of ['bad','',-1,601,0.5,null,true]) h.run(`setManualTimer(${JSON.stringify(value)});`);
   assert.equal(h.run('state.timer.remaining'),30);
@@ -42,9 +42,23 @@ test('timer manual bounds, running adjustment cap, expiry logs once',()=>{
   assert.ok(h.run('getTimerRemaining()')<=600);
   h.run('state.timer.endAt=Date.now()-100; refreshTimerDom(); refreshTimerDom();');
   assert.equal(h.run('state.timer.remaining'),0);
-  assert.equal(h.run('state.runtime.logs.filter(row=>row.type==="timer-end").length'),1);
+  assert.equal(h.run('state.runtime.logs.filter(row=>row.type==="timer-end").length'),0);
   h.run('setManualTimer(0);');
   assert.equal(h.run('state.timer.running'),false);
+});
+
+test('only core events are logged during a started run, never during rehearsal', () => {
+  const h=fixture();
+  h.run(`startTimer();pauseTimer();goSequence(2);toggleAnswer();`);
+  assert.equal(h.run('state.runtime.logs.length'),0);
+  h.run(`goSequence(1);startRun();startTimer();pauseTimer();toggleAnswer();goSequence(2);finishRun();`);
+  assert.deepEqual(h.json('state.runtime.logs.map(row=>row.type)'), ['run-start','timer-start','answer-reveal','sequence-move','run-end']);
+  h.run(`state=loadPrivateState();`);
+  assert.deepEqual(h.json('state.runtime.logs.map(row=>row.type)'), ['run-start','timer-start','answer-reveal','sequence-move','run-end']);
+  h.run(`runtimeLog(state,'timer-end','old');runtimeLog(state,'screen','old');`);
+  assert.equal(h.run('state.runtime.logs.length'),5);
+  h.run(`handleAction('clear-logs');`);
+  assert.equal(h.run('state.runtime.logs.length'),0);
 });
 
 
@@ -83,10 +97,10 @@ test('event clock and round progress are derived without affecting projector sta
 
 
 
-test('expired timer on reload is recorded once, and invalid calendar dates normalize safely',()=>{
+test('expired timer on reload stays stopped without a detailed log, and invalid dates normalize',()=>{
   const h=fixture();
   h.run('startTimer(); state.timer.endAt=Date.now()-100; state.runSettings.eventDate="2026-99-99"; state=normalizeState(state); state=normalizeState(state);');
-  assert.equal(h.run('state.runtime.logs.filter(row=>row.type==="timer-end").length'),1);
+  assert.equal(h.run('state.runtime.logs.filter(row=>row.type==="timer-end").length'),0);
   assert.equal(h.run('state.runSettings.eventDate'),'2026-10-30');
   assert.equal(h.run('validEventDate("2026-02-30")'),false);
 });
@@ -99,11 +113,11 @@ test('timer expiry does not rerender away settings and screen-editor drafts',()=
   assert.equal(h.run('renders'),0);
 });
 
-test('expiry during ticker setup leaves exactly one interval and one completion log',()=>{
+test('expiry during ticker setup leaves exactly one interval',()=>{
   const h=fixture();
   h.run('activeIntervals=new Set(); intervalSerial=0; setInterval=()=>{const id=++intervalSerial;activeIntervals.add(id);return id}; clearInterval=id=>activeIntervals.delete(id); startTimer(); state.timer.endAt=Date.now()-10; syncTicker();');
   assert.equal(h.run('activeIntervals.size'),1);
-  assert.equal(h.run('state.runtime.logs.filter(row=>row.type==="timer-end").length'),1);
+  assert.equal(h.run('state.runtime.logs.filter(row=>row.type==="timer-end").length'),0);
 });
 
 test('safety lock cancels premature answer and running reset without changing state',()=>{

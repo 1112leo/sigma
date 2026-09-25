@@ -97,7 +97,7 @@ test('blank private fields save, edited ID, invalid time rejected, storage failu
 
 test('image completion preserves edits and ignores stale uploads and closed editors', async () => {
   const h=fixture();
-  h.run(`openQuestion('Q1'); pending=[]; compressQuestionImage=()=>new Promise(resolve=>pending.push(resolve));`);
+  h.run(`openQuestion('Q1'); pending=[]; compressQuestionImage=()=>new Promise(resolve=>pending.push(resolve)); storeImage=async()=>createId();`);
   h.fields['q-question']={value:'작성 중인 질문'};
   const first=h.run(`handleQuestionImage({target:{files:[{name:'one.png'}]}})`);
   const second=h.run(`handleQuestionImage({target:{files:[{name:'two.png'}]}})`);

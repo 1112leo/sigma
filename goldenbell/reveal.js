@@ -19,23 +19,29 @@
         reveal(entry.target);
         return;
       }
-      // Only entering elements own an animation/layer, not the entire offscreen page.
+      // Keep the pending opacity until animation completion, avoiding a one-frame flash.
       const animation = entry.target.animate([
-        { opacity: 0, transform: 'translateY(8px)' },
-        { opacity: 1, transform: 'none' },
-      ], { duration: 600, easing: 'cubic-bezier(.16, 1, .3, 1)', fill: 'backwards' });
-      entry.target.removeAttribute('data-scroll-pending');
-      pending.delete(entry.target);
+        { opacity: 0, transform: 'translateY(18px)' },
+        { opacity: 1, transform: 'translateY(0)' },
+      ], { duration: 760, easing: 'cubic-bezier(.22, .7, .2, 1)', fill: 'both' });
       active.set(entry.target, animation);
-      animation.oncancel = animation.onfinish = () => active.delete(entry.target);
+      animation.onfinish = () => reveal(entry.target);
     });
-  }, { threshold: 0, rootMargin: '0px 0px 96px 0px' });
+  }, { threshold: 0, rootMargin: '0px 0px -8% 0px' });
 
-  // Prepare below-fold items BEFORE they enter view: never flash visible content to zero.
-  items.filter(item => item.getBoundingClientRect().top >= innerHeight + 96).forEach(item => {
+  // Sections already on screen remain visible; later sections wait for actual entry.
+  items.filter(item => item.getBoundingClientRect().top >= innerHeight - 8).forEach(item => {
     pending.add(item);
     item.setAttribute('data-scroll-pending', '');
     observer.observe(item);
+  });
+  [...document.querySelectorAll('.hero-copy, .hero-art')].forEach((item, index) => {
+    const animation = item.animate([
+      { opacity: 0, transform: 'translateY(16px)' },
+      { opacity: 1, transform: 'translateY(0)' },
+    ], { duration: 800, delay: index * 110, easing: 'cubic-bezier(.22, .7, .2, 1)', fill: 'backwards' });
+    active.set(item, animation);
+    animation.onfinish = () => active.delete(item);
   });
   document.addEventListener('focusin', event => {
     for (const item of items) {
@@ -47,8 +53,7 @@
   });
   const showAll = () => {
     observer.disconnect();
-    for (const item of pending) item.removeAttribute('data-scroll-pending');
-    pending.clear();
+    for (const item of [...pending]) reveal(item);
     for (const animation of active.values()) animation.cancel();
     active.clear();
   };

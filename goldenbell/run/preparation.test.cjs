@@ -50,11 +50,11 @@ test('atomic replace clears runtime, stops timer/reveal, retains sequence for ex
   assert.equal(h.run('state.timer.running'),false); assert.equal(h.run('state.answerVisible'),false);
   assert.deepEqual(h.json('normalizeState(JSON.parse(JSON.stringify(state))).questions'),h.json('state.questions'));
 });
-test('append/update total count and image cap checked before writing', () => {
+test('append/update total count is checked without the former aggregate image cap', () => {
   const h = setup();
   h.run('state.questions=Array.from({length:500},(_,i)=>migrateQuestion({id:String(i),question:"Q",answer:"A"},i))');
   assert.ok(h.run('prepareQuestionImport(input,state.questions,"append",opts).errors.length'));
-  assert.ok(h.run('prepareQuestionImport([{...input[0],image:"data:image/png;base64,AAAA"}],[],"replace",{...opts,maxImages:1}).errors.length'));
+  assert.equal(h.run('prepareQuestionImport([{...input[0],image:"data:image/png;base64,AAAA"}],[],"replace",{...opts,maxImages:1}).errors.length'),0);
 });
 test('preflight covers missing fields, bad timer, unfinal/unsequenced, duplicate, missing refs, empty rounds, math and image', () => {
   const h = setup();
@@ -114,25 +114,25 @@ test('unsupported trusted math commands fall back to complete raw input and warn
     h.context.text=text; assert.equal(h.run('renderMath(text).errors.length'),1); assert.ok(h.run('renderMath(text).html.includes("https://example.com")')); assert.doesNotMatch(h.run('richText(text)'),/<a |<img /);
   }
 });
-test('late full-backup reads cannot mutate or broadcast after PIN lock and restores disarm reveal snapshots', () => {
+test('late full-backup reads cannot mutate or broadcast after PIN lock and restores disarm reveal snapshots', async () => {
   const h=setup(); const readers=[]; h.context.FileReader=class { constructor(){readers.push(this);} readAsText(){} };
   h.run('downloadBackup=()=>true; isUnlocked=()=>true; state=defaultState(); activateSequence(state,3); state.answerVisible=true; state.runtime.overlay={type:"screen",screenId:"judging"}; const backup=JSON.stringify(state); importData({target:{files:[{size:10}],value:""}});');
-  readers[0].result=h.run('backup'); readers[0].onload();
+  readers[0].result=h.run('backup'); await readers[0].onload();
   assert.equal(h.run('state.runtime.returns.length'),0);
   h.run('importData({target:{files:[{size:10}],value:""}}); lockConsole();');
   const stored=h.storage.get('sigma-goldenbell-v1');
-  readers[1].result=h.run('backup'); readers[1].onload();
+  readers[1].result=h.run('backup'); await readers[1].onload();
   assert.equal(h.run('state'),null); assert.equal(h.storage.get('sigma-goldenbell-v1'),stored);
 });
 test('full restore cancels older async batch/preflight and reset storage failure rolls back', async () => {
   const h=setup(); const readers=[]; h.context.FileReader=class { constructor(){readers.push(this);} readAsText(){} };
   h.run('downloadBackup=()=>true; isUnlocked=()=>true; let finishImages; brokenImages=()=>new Promise(resolve=>{finishImages=resolve}); importDraft={rows:input,mode:"append"}; const pending=applyBatch();');
   h.run('importData({target:{files:[{size:10}],value:""}})');
-  readers[0].result=JSON.stringify({questions:[{id:'RESTORED',question:'Restored',answer:'A'}]}); readers[0].onload();
+  readers[0].result=JSON.stringify({questions:[{id:'RESTORED',question:'Restored',answer:'A'}]}); await readers[0].onload();
   h.run('finishImages([])'); await h.run('pending');
   assert.deepEqual(h.json('state.questions.map(q=>q.id)'),['RESTORED']); assert.equal(h.run('importDraft'),null);
   h.run('const pendingCheck=runPreflight(); clearPreparationDrafts(); finishImages([])'); await h.run('pendingCheck'); assert.equal(h.run('preflightResult'),null);
-  const before=h.json('state'); h.context.localStorage.setItem=()=>{throw new Error('quota')}; h.run('handleAction("reset-all")'); assert.deepEqual(h.json('state'),before);
+  const before=h.json('state'); h.context.localStorage.setItem=()=>{throw new Error('quota')}; await h.run('handleAction("reset-all")'); assert.deepEqual(h.json('state'),before);
 });
 
 test('backup failure prevents reset, full restore and question import', async () => {
@@ -140,14 +140,14 @@ test('backup failure prevents reset, full restore and question import', async ()
   h.context.FileReader=class { constructor(){readers.push(this);} readAsText(){} };
   h.run('state.questions=input.map(migrateQuestion); saveState(); downloadBackup=()=>false; isUnlocked=()=>true; brokenImages=async()=>[]; importDraft={rows:[{id:"NEW",question:"New",answer:"A"}],mode:"append"};');
   const before=h.json('state');
-  h.run('handleAction("reset-all")');
+  await h.run('handleAction("reset-all")');
   assert.deepEqual(h.json('state'),before);
   h.run('const pending=applyBatch()'); await h.run('pending');
   assert.deepEqual(h.json('state'),before);
   assert.match(h.run('importDraft.error'),/백업을 시작하지 못해/);
   h.run('importData({target:{files:[{size:10}],value:""}})');
   readers[0].result=JSON.stringify({questions:[{id:'RESTORED',question:'Restored',answer:'A'}]});
-  readers[0].onload();
+  await readers[0].onload();
   assert.deepEqual(h.json('state'),before);
 });
 
@@ -158,12 +158,12 @@ test('backup reports failure instead of creating an empty file, and preserves un
   h.context.document.createElement=()=>({click(){clicked++;}});
   h.context.setTimeout=callback=>callback();
   h.context.toast=message=>notices.push(message);
-  h.run('persistenceBlocked=true; exportData()');
+  await h.run('persistenceBlocked=true; exportData()');
   assert.equal(clicked,0);
   assert.ok(notices.some(message=>message.includes('시작하지 못했습니다')));
   assert.ok(!notices.some(message=>message.includes('요청했습니다')));
   h.storage.set('sigma-goldenbell-v1','{unreadable original');
-  assert.equal(h.run('downloadBackup()'),true);
+  assert.equal(await h.run('downloadBackup()'),true);
   assert.equal(clicked,1);
   assert.equal(await blob.text(),'{unreadable original');
 });
