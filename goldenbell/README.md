@@ -1,45 +1,53 @@
 # SIGMA Golden Bell landing page
 
-The existing static `/goldenbell/` page is independent from the operator app in
-`run/`. Serve the repository root (for example `python3 -m http.server 8082`) to
-preview both routes. No dependencies or build step are required for the landing.
-The `run/build.mjs` Site deployment packages both `/goldenbell/` and
-`/goldenbell/run/`. It reads the landing files from this directory in the main
-repository, or from `landing/` in the standalone Site source checkout. Keep that
-checkout's landing assets, including fonts and their license, synchronized before publishing. The Site root
-redirects to `/goldenbell/`; existing operator URLs remain unchanged.
+The static `/goldenbell/` page follows the organizer's supplied October 12
+reference: SUITE headlines, SUIT body text, a full-width dotted mathematics
+backdrop, overlapping schedule card, and rank-specific prize cards.
 
-Run checks from the repository root:
+Serve the repository root (`python3 -m http.server 8082`) to preview the landing
+and `/goldenbell/run/` together. The landing needs no dependencies or build step.
+The optional `run/build.mjs` standalone worker packages both Golden Bell routes,
+including the landing scripts and locally hosted fonts.
+
+## Event content
+
+- October 30, 2026 (Friday), 16:00–17:30 tentative, school gym.
+- Cheonan Oseong High School grades 1–2; first 60 applicants, preregistration only.
+- Everyone receives Isaac toast. Culture vouchers: 1st ₩50,000, 2nd ₩30,000,
+  3rd ₩10,000. 4th and 5th receive snack boxes.
+- Two comeback rounds, during the middle and later parts of the contest.
+
+These facts come from the supplied reference. Update all repeated schedule,
+eligibility and prize descriptions together if the organizer changes them.
+
+## Fonts and animation
+
+The original SUIT and SUITE variable WOFF2 files are hosted in `fonts/`, with
+their SIL Open Font Licenses. They match the reference's `@2` fonts:
+https://github.com/sun-typeface/SUIT and https://github.com/sun-typeface/SUITE.
+No font CDN is used at runtime. Existing DNF BitBit and bell-image assets remain
+available for other pages; they are not used by this landing.
+
+`landing.js` draws the reference's dot grid, curves and geometry. It stops
+animation outside the viewport, in hidden tabs, and for reduced-motion users.
+`reveal.js` adds one-time entrances to below-fold sections without changing
+layout. Content stays available if those browser APIs are unsupported.
+
+## Registration and contact
+
+Both application buttons open the organizer's Google Form:
+https://forms.gle/HBcpW34hJzRkYkDi9. The landing itself collects no applicant data.
+
+After registration closes, set `REGISTRATION_CLOSED = true` near the top of
+`landing.js` and publish. This disables both application buttons and updates
+the application/FAQ copy. Stop Google Form responses separately in Google Forms;
+the landing switch does not control that form or count submissions.
+
+The footer provides SMS contact (010-5707-5642), Instagram contact, and the
+existing PIN-protected operator screen at `/goldenbell/run/`.
+
+## Checks
 
 ```sh
-node --test goldenbell/landing.test.cjs goldenbell/run/*.test.cjs
+node --test goldenbell/*.test.cjs goldenbell/run/*.test.cjs
 ```
-
-## Registration
-
-Registration links to the organizer-provided Google Form:
-https://forms.gle/HBcpW34hJzRkYkDi9. It opens in a new tab; this landing page does
-not collect or store applicant details. Form questions, consent and response
-settings are managed in Google Forms. Keep this link and the FAQ consistent if
-registration closes or the organizer changes the form.
-
-## Hero artwork
-
-Typography uses the user's selected DNF BitBit original Regular WOFF2, downloaded
-unchanged from https://cdn.df.nexon.com/img/common/font/DNFBitBit-Regular.woff2.
-The file is self-hosted; no installed font or external CDN is needed at runtime.
-The same font file serves all visual weights without synthetic bolding.
-Copyright (c) 2022 NEOPLE Inc.; SIL Open Font License 1.1 and source attribution
-are included in `fonts/DNFBitBit-LICENSE.txt`. Official policy:
-https://df.nexon.com/data/font/dnfbitbit.
-
-Decorative glints use CSS geometry, are hidden from assistive technology, never
-intercept input, and stop animating when reduced motion is preferred.
-
-`hero-bell.png` was generated with the built-in image generation tool on
-2026-09-24, then copied into this project. It is decorative campaign artwork,
-not a photograph of an actual event or prize. No third-party logos are used.
-
-Final prompt:
-
-> Use case: ads-marketing. Asset type: hero artwork for a Korean high-school mathematics Golden Bell event landing page, not a website mockup. Create one exquisite cinematic product render: a large elegant polished warm-gold handbell tilted diagonally, short dark handle, floating above a matte midnight navy surface, with three small restrained gold confetti ribbons around it, subtle soft warm spotlight, beautiful specular reflections and deep shadows. Sophisticated youthful editorial art direction, premium school festival campaign. Bell centered in a square 1024x1024 composition with generous dark negative space at the edges. Background almost uniform deep ink navy #101b31 to blend into web background, subtly illuminated near bell. No people, no lettering, no digits, no logos, no watermark, no stage, no podium, no excessive glitter. Strong clear silhouette, tactile brushed and polished metal.

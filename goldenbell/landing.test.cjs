@@ -12,7 +12,9 @@ test('event page uses the agreed date, tentative hours and benefits', () => {
   assert.match(html, /행사 시간은 준비 상황에 따라 조정될 수 있습니다/);
   assert.match(html, /이삭토스트/);
   assert.match(html, /문화상품권/);
-  assert.match(html, /상품 구성과 세부 시상 기준은 추후 안내/);
+  const awards = [...html.matchAll(/<li\b[^>]*class="sigma-prize-award[^\"]*"[^>]*>([\s\S]*?)<\/li>/g)]
+    .map(match => match[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+  assert.deepEqual(awards, ['1위 문화상품권 5만 원', '2위 문화상품권 3만 원', '3위 문화상품권 1만 원', '4·5위 상품 과자 박스']);
   assert.equal(new Date('2026-10-30T12:00:00+09:00').getUTCDay(), 5);
 });
 
@@ -23,11 +25,19 @@ test('registration links to the organizer form without collecting data on the la
   assert.match(link, /rel="noopener noreferrer"/);
   assert.match(link, /aria-describedby="registration-tab-note"/);
   assert.doesNotMatch(html, /<form\b|<input\b|<iframe\b|\bon\w+\s*=/i);
-  assert.deepEqual([...html.matchAll(/<script\b[^>]*src="([^"]+)"/g)].map(match => match[1]), ['reveal.js?v=20260926-motion1']);
+  assert.deepEqual([...html.matchAll(/<script\b[^>]*src="([^"]+)"/g)].map(match => match[1]), ['landing.js?v=20261012-reference1', 'reveal.js?v=20261012-reference1']);
   assert.doesNotMatch(html, /오픈 준비 중|미리보기|접수 전 목업/);
   assert.match(html, /새 탭에서 신청 폼이 열립니다/);
   assert.match(html, /선착순 60명/);
   assert.equal((html.match(/참가 신청하기/g) || []).length, 2);
+  for (const match of html.matchAll(/<a\b[^>]*href="https:\/\/forms\.gle\/[^\"]*"[^>]*>/g)) {
+    assert.match(match[0], /target="_blank"/);
+    assert.match(match[0], /rel="noopener noreferrer"/);
+    assert.match(match[0], /aria-describedby="registration-tab-note"/);
+  }
+  assert.match(html, /천안오성고 1·2학년/);
+  assert.match(html, /사전 신청 필수/);
+  assert.match(html, /현장 추가 참가 신청은 받지 않습니다/);
   assert.doesNotMatch(html, /참가 신청 하기|접수 해주세요/);
 });
 
@@ -48,7 +58,7 @@ test('page has accessible registration, heading structure and reduced-motion sup
   assert.equal((html.match(/<h1\b/g) || []).length, 1);
   assert.match(html, /class="skip-link"/);
   assert.match(html, /id="registration-tab-note"/);
-  assert.match(html, /<img[^>]*alt="[^"]+"/);
+  assert.match(html, /<canvas id="sigma-bg-graph" aria-hidden="true"><\/canvas>/);
   assert.match(fs.readFileSync(path.join(__dirname, 'goldenbell.css'), 'utf8'), /prefers-reduced-motion:\s*reduce/);
 });
 
@@ -57,25 +67,29 @@ test('refined landing keeps venue consistent and removes emoji-dependent decorat
   assert.match(html, /<dt>장소<\/dt>\s*<dd>체육관<\/dd>/);
   assert.match(html, /체육관에서 진행합니다/);
   assert.match(html, /참가자 전원 제공/);
-  assert.match(html, /시상 상품 · 예정/);
+  assert.match(html, /1~5위 상품/);
   assert.doesNotMatch(html, /간식 · 예정|간식과 상품은 아직 확정 전/);
-  assert.match(html, /구글폼으로 참가 신청을 받고 있습니다/);
+  assert.doesNotMatch(html, /구글폼으로 참가 신청을 받고 있습니다/);
   assert.doesNotMatch(html, /나중에.*적지 뭐/);
 });
 
-test('DNF BitBit is packaged locally with its license and decorations are noninteractive', () => {
+test('reference headline/body fonts are local and the math backdrop is noninteractive', () => {
   const css = fs.readFileSync(path.join(__dirname, 'goldenbell.css'), 'utf8');
-  assert.match(css, /url\('fonts\/DNFBitBit-Regular\.woff2'\)/);
+  for (const face of ['SUIT', 'SUITE']) {
+    assert.ok(css.includes(`url('fonts/${face}-Variable.woff2')`));
+    assert.equal(fs.readFileSync(path.join(__dirname, `fonts/${face}-Variable.woff2`)).subarray(0,4).toString(), 'wOF2');
+    assert.match(fs.readFileSync(path.join(__dirname, `fonts/${face}-LICENSE.txt`), 'utf8'), /SIL OPEN FONT LICENSE/);
+  }
+  assert.match(css, /--font-head:"SUITE Variable"/);
+  assert.match(css, /--font-body:"SUIT Variable"/);
+  assert.doesNotMatch(html, /cdn\.jsdelivr|hero-bell\.png/);
   assert.doesNotMatch(css, /cdn\.df\.nexon|NanumSquare|AppleMyungjo/);
-  assert.equal(fs.readFileSync(path.join(__dirname,'fonts/DNFBitBit-Regular.woff2')).subarray(0,4).toString(),'wOF2');
-  assert.match(fs.readFileSync(path.join(__dirname,'fonts/DNFBitBit-LICENSE.txt'),'utf8'),/NEOPLE/);
-  assert.match(html, /class="hero-glints" aria-hidden="true"/);
-  assert.match(css, /\.hero-glints[^}]*pointer-events: none/);
+  assert.match(css, /\.sigma-bg-notes[\s\S]*?pointer-events:none/);
   assert.match(css, /prefers-reduced-motion: reduce/);
 });
 
 test('contact links are accessible at the bottom of the event page', () => {
   assert.match(html, /href="sms:01057075642"/);
   assert.match(html, /href="https:\/\/www\.instagram\.com\/sxxng_hx\.10\/" target="_blank" rel="noopener noreferrer"/);
-  assert.match(html, /문의 사항은.*연락해 주시기 바랍니다/);
+  assert.match(html.replace(/\s+/g, ' '), /문의 사항은.*연락해 주시기 바랍니다/);
 });

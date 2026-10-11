@@ -22,7 +22,7 @@ test('production worker smoke: routes, all nested modules/fonts/MIME and local-o
     assert.equal(response.headers.get('location'), `https://sigma.example${target}`);
   }
   const landingRoot = fs.existsSync(`${__dirname}/landing/index.html`) ? `${__dirname}/landing` : `${__dirname}/..`;
-  for (const name of ['index.html','goldenbell.css','reveal.js','hero-bell.png','fonts/DNFBitBit-Regular.woff2','fonts/DNFBitBit-LICENSE.txt']) {
+  for (const name of ['index.html','goldenbell.css','landing.js','reveal.js','hero-bell.png','fonts/SUIT-Variable.woff2','fonts/SUIT-LICENSE.txt','fonts/SUITE-Variable.woff2','fonts/SUITE-LICENSE.txt','fonts/DNFBitBit-Regular.woff2','fonts/DNFBitBit-LICENSE.txt']) {
     const response = await worker.fetch(new Request(`https://sigma.example/goldenbell/${name}`));
     assert.equal(response.status,200,name);
     if(name.endsWith('.woff2')) assert.equal(response.headers.get('content-type'),'font/woff2');

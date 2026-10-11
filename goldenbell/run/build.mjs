@@ -26,7 +26,7 @@ for (const file of files) {
 // The main repository keeps the landing beside run; the Site source checkout
 // carries the same assets in landing/ so its build remains self-contained.
 const landingRoot = existsSync(join(root, 'landing/index.html')) ? join(root, 'landing') : join(root, '..');
-for (const file of ['index.html', 'goldenbell.css', 'reveal.js', 'hero-bell.png', 'fonts/DNFBitBit-Regular.woff2', 'fonts/DNFBitBit-LICENSE.txt']) {
+for (const file of ['index.html', 'goldenbell.css', 'landing.js', 'reveal.js', 'hero-bell.png', 'fonts/SUIT-Variable.woff2', 'fonts/SUIT-LICENSE.txt', 'fonts/SUITE-Variable.woff2', 'fonts/SUITE-LICENSE.txt', 'fonts/DNFBitBit-Regular.woff2', 'fonts/DNFBitBit-LICENSE.txt']) {
   const name = `landing/${file}`;
   assets[name] = (await readFile(join(landingRoot, file))).toString('base64');
   contentTypes[name] = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.png': 'image/png', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8' }[extname(file)];
