@@ -1,5 +1,5 @@
 import { defaultRuntime, validClockTime, validEventDate, normalizeRuntime, effectiveSequence, runtimePosition, activeItem, runtimeLog, roundProgress, eventClock } from './runtime.js?v=20260926-break1';
-import { renderMath, richText, mathProjection } from './math.js?v=20260831-preparation5';
+import { mathParts, renderMath, richText, mathProjection } from './math.js?v=20260831-preparation5';
 import { parseQuestionImport, prepareQuestionImport, checkPreparation } from './preparation.js?v=20260926-images1';
 
 const PRIVATE_STORAGE_KEY = 'sigma-goldenbell-v1';
@@ -704,20 +704,83 @@ function multiline(value = '') {
   return esc(value).replace(/\r?\n/g, '<br>');
 }
 
+function questionDisplayLength(value = '') {
+  return mathParts(value).reduce((length, part) => length + (part.tex === undefined ? part.raw : part.tex
+    .replace(/\\(?:begin|end)\{[^}]*\}/g, '')
+    .replace(/\\[a-zA-Z]+/g, 'x')
+    .replace(/[{}_^&]/g, '')).replace(/\s/g, '').length, 0);
+}
+
 function questionSizeClass(value = '') {
-  const length = String(value).replace(/\s/g, '').length;
+  const length = questionDisplayLength(value);
   if (length > 300) return 'xlong';
   if (length > 180) return 'very-long';
   if (length > 115) return 'long';
-  if (length > 65) return 'medium';
+  if (length > 40) return 'medium';
   return 'short';
 }
 
 function answerSizeClass(value = '') {
-  const length = String(value).replace(/\s/g, '').length;
-  if (length > 100) return 'long';
-  if (length > 50) return 'medium';
+  const text = String(value).trim();
+  const length = questionDisplayLength(text);
+  if (length > 60) return 'long';
+  if (length > 24) return 'medium';
+  if (/^[①②③④⑤]\s*\S/.test(text)) return 'choice';
+  if (/^[+-]?\d+(?:\.\d+)?\s*[가-힣]+$/.test(text)) return 'quantity';
+  if (/[가-힣]/.test(text) && !text.includes('$')) return /\s/.test(text) || length >= 8 ? 'verbal' : 'text';
   return 'short';
+}
+
+function questionMathClass(value = '') {
+  const displays = mathParts(value).filter(part => part.display && part.tex);
+  if (displays.some(part => /\\begin\{array\}/.test(part.tex))) return 'math-table';
+  if (displays.some(part => {
+    const rows = /\\begin\{(aligned|gathered)\}([\s\S]*?)\\end\{\1\}/.exec(part.tex);
+    return rows && (rows[2].match(/\\\\/g) || []).length >= 2;
+  })) return 'math-steps';
+  return '';
+}
+
+function answerTextMarkup(value = '') {
+  const text = String(value).trim();
+  const choice = /^([①②③④⑤])\s*(.+)$/.exec(text);
+  if (choice) {
+    const content = choice[2].trim();
+    // Keep the choice number subordinate to the answer, including math answers.
+    return '<span class="answer-choice"><span class="answer-choice-index">' + esc(choice[1])
+      + '</span> <span class="answer-choice-value">' + answerTextMarkup(content) + '</span></span>';
+  }
+  const quantity = /^([+-]?\d+(?:\.\d+)?)\s*([가-힣]+)$/.exec(text);
+  if (quantity) return '<span class="answer-quantity">' + richText('$' + quantity[1] + '$')
+    + '<span class="answer-unit">' + esc(quantity[2]) + '</span></span>';
+  let math = '';
+  if (/^[+-]?\d+(?:\.\d+)?(?:\s*,\s*[+-]?\d+(?:\.\d+)?)*$/.test(text)) math = text;
+  else if (/^[OX]$/.test(text)) math = '\\mathrm{' + text + '}';
+  else if (/^[=+\-−×÷]$/.test(text)) math = text;
+  if (!math) return richText(value);
+  return richText('$' + math + '$');
+}
+
+function questionTextMarkup(value = '') {
+  const text = String(value);
+  const note = /\r?\n(\(단,[^\r\n]+\))\s*$/.exec(text);
+  if (note && !renderMath(text.slice(0, note.index)).errors.length && !renderMath(note[1]).errors.length) {
+    return questionTextMarkup(text.slice(0, note.index))
+      + '<span class="screen-question-note">' + richText(note[1]) + '</span>';
+  }
+  const match = /(?:^|\r?\n)([①②③④⑤][^\r\n]+)\s*$/.exec(text);
+  if (!match) return richText(text);
+  const stem = text.slice(0, match.index);
+  // The question bank separates choices with full-width spaces. Do not
+  // reinterpret circled numbers inside an ordinary expression or sentence.
+  const choices = match[1].split(/\u3000+(?=[①②③④⑤])/).map(choice => choice.trim());
+  const labels = '①②③④⑤';
+  if (choices.length < 2 || choices.length > 5
+    || choices.some((choice, index) => !choice.startsWith(labels[index]))
+    || [stem, ...choices].some(part => renderMath(part).errors.length)) return richText(text);
+  return richText(stem) + '<span class="screen-question-choices">'
+    + choices.map(choice => '<span class="screen-question-choice">' + richText(choice) + '</span>').join('')
+    + '</span>';
 }
 
 function toast(message) {
@@ -969,7 +1032,7 @@ function renderTab() {
 }
 
 function presentationFrame(payload) {
-  const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="./vendor/katex/katex.min.css"><link rel="stylesheet" href="./styles.css?v=20260924-id"><style>html,body{margin:0;overflow:hidden}</style></head><body>${renderScreenMarkup(payload)}</body></html>`;
+  const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="./vendor/katex/katex.min.css"><link rel="stylesheet" href="./styles.css?v=20261026-answer-scale"><style>html,body{margin:0;overflow:hidden}</style></head><body>${renderScreenMarkup(payload)}</body></html>`;
   return `<iframe class="presentation-frame" title="프레젠테이션 화면" sandbox="allow-same-origin" tabindex="-1" srcdoc="${esc(html)}"></iframe>`;
 }
 
@@ -1005,7 +1068,30 @@ function timerElements(selector) {
   return [...document.querySelectorAll(selector), ...(frameDocument?.querySelectorAll(selector) || [])];
 }
 
+function fitQuestionText(frame) {
+  const question = frame.contentDocument?.querySelector('.screen-question');
+  const holder = frame.contentDocument?.querySelector('.screen-question-content');
+  if (!question || !holder) return;
+  // Always start from CSS, so font/image loading never compounds the reduction.
+  question.style.removeProperty('font-size');
+  const base = parseFloat(frame.contentWindow.getComputedStyle(question).fontSize);
+  if (!Number.isFinite(base) || !holder.clientHeight) return;
+  const fits = () => question.scrollHeight <= holder.clientHeight + 1
+    && question.scrollWidth <= question.clientWidth + 1
+    && [...question.querySelectorAll('.katex-display')].every(math => math.scrollWidth <= math.clientWidth + 3);
+  if (fits()) return;
+  let low = Math.min(24, base), high = base;
+  for (let step = 0; step < 8; step++) {
+    const size = (low + high) / 2;
+    question.style.fontSize = `${size}px`;
+    if (fits()) low = size;
+    else high = size;
+  }
+  question.style.fontSize = `${Math.floor(low)}px`;
+}
+
 function fitRevealedAnswer(frame) {
+  fitQuestionText(frame);
   const panel = frame.contentDocument?.querySelector('.screen-answer');
   const content = panel?.querySelector('.screen-answer-body');
   if (!content) return;
@@ -1739,7 +1825,7 @@ async function runPreflight() {
   } finally { if (epoch === preparationEpoch) { preflightBusy = false; if (state) render(); } }
 }
 function renderQuestionMathPreview(question) {
-  return `${question.image ? `<img class="operator-question-image" src="${safeImage(question.image)}" alt="${esc(question.imageAlt || '문제 이미지')}">` : ''}<div>${richText(question.question || '문제 미입력')}</div><p><small>정답</small> ${richText(question.answer || '정답 미입력')}</p>${question.explanation ? `<p>${richText(question.explanation)}</p>` : ''}`;
+  return `${question.image ? `<img class="operator-question-image" src="${safeImage(question.image)}" alt="${esc(question.imageAlt || '문제 이미지')}">` : ''}<div>${richText(question.question || '문제 미입력')}</div><p><small>정답</small> ${answerTextMarkup(question.answer || '정답 미입력')}</p>${question.explanation ? `<p>${richText(question.explanation)}</p>` : ''}`;
 }
 function renderPreparation() {
   const preview = importDraft?.rows ? prepareBatch() : null;
@@ -1794,10 +1880,11 @@ function renderScreenMarkup(publicState) {
   const category = categoryMeta[question.category] || categoryMeta.basic;
   const remaining = getTimerRemaining(publicState.timer);
   const image = safeImage(question.image);
+  const questionLayout = image ? `has-image${questionDisplayLength(question.question) < 45 ? ' image-focus' : ''}` : '';
   if (publicState.answerVisible) {
-    return `<main class="screen-mode screen-question-mode answer-open"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title ?? '시그마 수학 골든벨')}</div><div class="screen-round"><span class="screen-category ${category.className}">${esc(category.label)}</span><strong>${Number(publicState.currentIndex) + 1}</strong><span>/ ${Number(publicState.totalQuestions) || 0}</span></div></header><section class="screen-question-wrap"><div class="screen-answer"><div class="screen-answer-body"><span class="answer-label">정답 공개</span><p class="answer-question-title">${esc(question.title || `문제 ${Number(publicState.currentIndex) + 1}`)}</p><strong class="${answerSizeClass(question.answer)}">${richText(question.answer || '정답 미입력')}</strong>${question.explanation ? `<div class="answer-explanation"><span>해설</span><p>${richText(question.explanation)}</p></div>` : ''}</div></div></section><footer class="screen-simple-footer"><span>${esc(messages.tagline ?? 'SIGMA GOLDEN BELL')}</span><span>SIGMA</span></footer></main>`;
+    return `<main class="screen-mode screen-question-mode answer-open"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title ?? '시그마 수학 골든벨')}</div><div class="screen-round"><span class="screen-category ${category.className}">${esc(category.label)}</span><strong>${Number(publicState.currentIndex) + 1}</strong><span>/ ${Number(publicState.totalQuestions) || 0}</span></div></header><section class="screen-question-wrap"><div class="screen-answer"><div class="screen-answer-body"><span class="answer-label">정답 공개</span><p class="answer-question-title">${esc(question.title || `문제 ${Number(publicState.currentIndex) + 1}`)}</p><strong class="${answerSizeClass(question.answer)}">${answerTextMarkup(question.answer || '정답 미입력')}</strong>${question.explanation ? `<div class="answer-explanation"><span>해설</span><p>${richText(question.explanation)}</p></div>` : ''}</div></div></section><footer class="screen-simple-footer"><span>${esc(messages.tagline ?? 'SIGMA GOLDEN BELL')}</span><span>SIGMA</span></footer></main>`;
   }
-  return `<main class="screen-mode screen-question-mode ${publicState.answerVisible ? 'answer-open' : ''}"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title ?? '시그마 수학 골든벨')}</div><div class="screen-round"><span class="screen-category ${category.className}">${esc(category.label)}</span><strong>${Number(publicState.currentIndex) + 1}</strong><span>/ ${Number(publicState.totalQuestions) || 0}</span></div></header><section class="screen-question-wrap"><p class="screen-q-title">${esc(question.title || `문제 ${Number(publicState.currentIndex) + 1}`)}</p><div class="screen-question-content ${image ? 'has-image' : ''}">${image ? `<img class="screen-question-image" src="${image}" alt="${esc(question.imageAlt || '문제 참고 이미지')}">` : ''}<h1 class="screen-question ${questionSizeClass(question.question)}">${richText(question.question || '문제를 준비 중입니다.')}</h1></div>${publicState.answerVisible ? `<div class="screen-answer"><div class="screen-answer-body"><span>정답</span><strong class="${answerSizeClass(question.answer)}">${richText(question.answer || '정답 미입력')}</strong>${question.explanation ? `<p>${richText(question.explanation)}</p>` : ''}</div></div>` : ''}</section><footer class="screen-footer"><div class="screen-timer-copy"><span data-timer-label>${remaining <= 0 ? '시간 종료' : '남은 시간'}</span><strong data-timer-value class="${timerClass(publicState.timer)}">${formatTime(remaining)}</strong></div><div class="screen-motto">${esc(messages.tagline ?? 'SIGMA GOLDEN BELL')}</div></footer><div class="screen-progress"><div data-timer-progress></div></div></main>`;
+  return `<main class="screen-mode screen-question-mode ${publicState.answerVisible ? 'answer-open' : ''}"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title ?? '시그마 수학 골든벨')}</div><div class="screen-round"><span class="screen-category ${category.className}">${esc(category.label)}</span><strong>${Number(publicState.currentIndex) + 1}</strong><span>/ ${Number(publicState.totalQuestions) || 0}</span></div></header><section class="screen-question-wrap"><p class="screen-q-title">${esc(question.title || `문제 ${Number(publicState.currentIndex) + 1}`)}</p><div class="screen-question-content ${questionLayout}">${image ? `<img class="screen-question-image" src="${image}" alt="${esc(question.imageAlt || '문제 참고 이미지')}">` : ''}<h1 class="screen-question ${questionSizeClass(question.question)} ${questionMathClass(question.question)}">${questionTextMarkup(question.question || '문제를 준비 중입니다.')}</h1></div>${publicState.answerVisible ? `<div class="screen-answer"><div class="screen-answer-body"><span>정답</span><strong class="${answerSizeClass(question.answer)}">${answerTextMarkup(question.answer || '정답 미입력')}</strong>${question.explanation ? `<p>${richText(question.explanation)}</p>` : ''}</div></div>` : ''}</section><footer class="screen-footer"><div class="screen-timer-copy"><span data-timer-label>${remaining <= 0 ? '시간 종료' : '남은 시간'}</span><strong data-timer-value class="${timerClass(publicState.timer)}">${formatTime(remaining)}</strong></div><div class="screen-motto">${esc(messages.tagline ?? 'SIGMA GOLDEN BELL')}</div></footer><div class="screen-progress"><div data-timer-progress></div></div></main>`;
 }
 
 function renderScreen() {
