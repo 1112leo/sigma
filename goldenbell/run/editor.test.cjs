@@ -13,7 +13,7 @@ function fixture() {
 
 test('all filters and search compose without changing data; null round is distinct from all', () => {
   const h=fixture();
-  for (const [key,value] of Object.entries({category:'hard',round:'final',usageStatus:'reserve',difficulty:'extreme',author:'나',reviewStatus:'peer-reviewed',search:'파이'})) {
+  for (const [key,value] of Object.entries({category:'hard',round:'final',usageStatus:'reserve',difficulty:'extreme',author:'나',search:'파이'})) {
     h.run(`questionFilters = {${key}:${JSON.stringify(value)}};`);
     assert.deepEqual(h.json('filteredQuestions().map(q=>q.id)'), ['Q2']);
   }

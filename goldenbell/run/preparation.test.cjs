@@ -14,14 +14,15 @@ test('JSON arrays/wrappers and RFC CSV parse BOM, CRLF, quoted newline/comma/dou
   for (const bad of ['id,id\na,b', 'id,question\na,"oops', 'id,question\na,"b"x', 'id,question\na', 'id,question\na,b"c']) { h.context.bad = bad; assert.throws(() => h.run('parseQuestionImport(bad,"csv")')); }
   for (const bad of ['{}','[]','null','[']) { h.context.bad = bad; assert.throws(() => h.run('parseQuestionImport(bad)')); }
 });
-test('raw import rejects duplicate IDs, every bad enum, bad time, missing answers, unsafe images before normalization', () => {
+test('raw import rejects duplicate IDs, bad non-review enums, bad time, missing answers, unsafe images before normalization', () => {
   const h = setup();
   h.run('state.questions = input.map(migrateQuestion)');
   assert.ok(h.json('prepareQuestionImport(input,state.questions,"append",opts).errors').some(e => e.message.includes('존재')));
   for (const mode of ['append','update','replace']) assert.ok(h.json(`prepareQuestionImport([...input,...input],[],"${mode}",opts).errors`).some(e => e.message.includes('중복')));
   h.context.invalid = { id:'X', question:'', answer:' ', category:'oops', round:'oops', timeLimit:0, usageStatus:'oops', difficulty:'oops', reviewStatus:'oops', image:'https://example.com/x.png' };
   const errors = h.json('prepareQuestionImport([invalid],[],"append",opts).errors');
-  for (const field of ['question','answer','category','round','timeLimit','usageStatus','difficulty','reviewStatus','image']) assert.ok(errors.some(e=>e.message.includes(field)),field);
+  for (const field of ['question','answer','category','round','timeLimit','usageStatus','difficulty','image']) assert.ok(errors.some(e=>e.message.includes(field)),field);
+  assert.ok(!errors.some(e=>e.message.includes('reviewStatus')));
   for (const time of [null,true,'',1.5,-5,601]) { h.context.time = time; assert.ok(h.run('prepareQuestionImport([{...input[0],timeLimit:time}],[],"append",opts).errors.length > 0')); }
   assert.ok(h.run('prepareQuestionImport([{question:"Q",answer:"A"}],[],"update",opts).errors.length > 0'));
 });
@@ -31,6 +32,7 @@ test('update preserves omitted metadata/photo/createdAt/order, explicit blank cl
   const old = h.json('state.questions[0]');
   const updated = h.json('prepareQuestionImport([{id:"A",answer:"new",author:""}],state.questions,"update",opts).questions[0]');
   for (const field of ['question','image','note','createdAt','order']) assert.equal(updated[field],old[field]);
+  assert.equal(updated.reviewStatus,old.reviewStatus);
   assert.equal(updated.author,''); assert.equal(updated.answer,'new');
   assert.equal(h.run('prepareQuestionImport([{question:"Q",answer:"A",seconds:42}],[],"append",opts).prepared[0].timeLimit'),42);
   assert.ok(h.run('prepareQuestionImport([{question:"Q",answer:"A"}],[],"append",opts).prepared[0].id'));
@@ -56,12 +58,22 @@ test('append/update total count is checked without the former aggregate image ca
   assert.ok(h.run('prepareQuestionImport(input,state.questions,"append",opts).errors.length'));
   assert.equal(h.run('prepareQuestionImport([{...input[0],image:"data:image/png;base64,AAAA"}],[],"replace",{...opts,maxImages:1}).errors.length'),0);
 });
-test('preflight covers missing fields, bad timer, unfinal/unsequenced, duplicate, missing refs, empty rounds, math and image', () => {
+test('preflight covers missing fields, bad timer, unsequenced, duplicate, missing refs, empty rounds, math and image', () => {
   const h = setup();
-  h.run('state.questions=[migrateQuestion({id:"A",question:"",answer:"",timeLimit:30}),migrateQuestion({id:"B",question:"$\\\\badcommand$",answer:"A"})]; state.questions[0].timeLimit=0; state.questions[0].image="https://example.com/image"; state.sequence=[{type:"question",questionId:"A"},{type:"question",questionId:"A"},{type:"question",questionId:"missing"},{type:"screen",screenId:"missing"}]');
+  h.run('state.questions=[migrateQuestion({id:"A",question:"",answer:"",timeLimit:30}),migrateQuestion({id:"B",question:"$\\\\badcommand$",answer:"A"})]; state.questions[0].timeLimit=0; state.questions[0].reviewStatus="legacy-invalid"; state.questions[0].image="https://example.com/image"; state.sequence=[{type:"question",questionId:"A"},{type:"question",questionId:"A"},{type:"question",questionId:"missing"},{type:"screen",screenId:"missing"}]');
   const result=h.json('checkPreparation(state,{validTime:validTimeLimit,safeImage,math:renderMath})');
-  for (const code of ['empty-question','empty-answer','invalid-time','unfinal','unsequenced','duplicate','missing-question','missing-screen','empty-round','math','image']) assert.ok(result.issues.some(i=>i.code===code),code);
+  for (const code of ['empty-question','empty-answer','invalid-time','unsequenced','duplicate','missing-question','missing-screen','empty-round','math','image']) assert.ok(result.issues.some(i=>i.code===code),code);
+  assert.ok(!result.issues.some(i=>i.code==='unfinal'));
   assert.equal(result.normal,0);
+});
+test('legacy review status never blocks imports in any mode', () => {
+  const h = setup();
+  const row = { id:'LEGACY', question:'Q', answer:'A', reviewStatus:'obsolete-status' };
+  for (const mode of ['append','update','replace']) {
+    const result = h.json(`prepareQuestionImport([${JSON.stringify(row)}],[],'${mode}',opts)`);
+    assert.deepEqual(result.errors,[]);
+    assert.equal(result.questions.at(-1).id,'LEGACY');
+  }
 });
 test('real local KaTeX renders inline/display on every surface and falls back safely on malformed math', () => {
   const h = setup();
@@ -124,14 +136,13 @@ test('late full-backup reads cannot mutate or broadcast after PIN lock and resto
   readers[1].result=h.run('backup'); await readers[1].onload();
   assert.equal(h.run('state'),null); assert.equal(h.storage.get('sigma-goldenbell-v1'),stored);
 });
-test('full restore cancels older async batch/preflight and reset storage failure rolls back', async () => {
+test('full restore cancels older async batch and reset storage failure rolls back', async () => {
   const h=setup(); const readers=[]; h.context.FileReader=class { constructor(){readers.push(this);} readAsText(){} };
   h.run('downloadBackup=()=>true; isUnlocked=()=>true; let finishImages; brokenImages=()=>new Promise(resolve=>{finishImages=resolve}); importDraft={rows:input,mode:"append"}; const pending=applyBatch();');
   h.run('importData({target:{files:[{size:10}],value:""}})');
   readers[0].result=JSON.stringify({questions:[{id:'RESTORED',question:'Restored',answer:'A'}]}); await readers[0].onload();
   h.run('finishImages([])'); await h.run('pending');
   assert.deepEqual(h.json('state.questions.map(q=>q.id)'),['RESTORED']); assert.equal(h.run('importDraft'),null);
-  h.run('const pendingCheck=runPreflight(); clearPreparationDrafts(); finishImages([])'); await h.run('pendingCheck'); assert.equal(h.run('preflightResult'),null);
   const before=h.json('state'); h.context.localStorage.setItem=()=>{throw new Error('quota')}; await h.run('handleAction("reset-all")'); assert.deepEqual(h.json('state'),before);
 });
 

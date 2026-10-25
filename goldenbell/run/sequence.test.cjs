@@ -35,14 +35,14 @@ test('auto sequence excludes reserve/disabled and inserts round screens without 
 
 test('reload/backup retains exact duplicate occurrence, custom screen edits and blank values', () => {
   const h=fixture();
-  h.run(`goSequence(4); state.customScreens[0].title=''; state.messages.lobby=''; state.customScreens[0].subtitle=''; state.customScreens[0].description='직접 수정'; saveState(); before=JSON.stringify(state); state=loadPrivateState();`);
+  h.run(`goSequence(4); state=normalizeState(state); state.customScreens[0].title=''; state.messages.lobby=''; state.customScreens[0].subtitle=''; state.customScreens[0].description='직접 수정'; saveState(); before=JSON.stringify(state); state=loadPrivateState();`);
   assert.deepEqual(h.json('state'),JSON.parse(h.run('before')));
-  assert.equal(h.run('state.sequenceIndex'),4);
+  assert.equal(h.run('state.sequenceIndex'),5);
   assert.equal(h.run('state.customScreens[0].title'),'');
   assert.deepEqual(h.json('normalizeState(JSON.parse(JSON.stringify(state)))'),h.json('state'));
 });
 
-test('legacy migration maps current question and standby and preserves an intentionally empty sequence', () => {
+test('legacy migration maps current question and standby and restores required rounds in an empty sequence', () => {
   const h=fixture();
   h.run(`legacy={questions:state.questions,currentIndex:1,displayMode:'question',messages:{tagline:'',break:''}}; migrated=normalizeState(legacy);`);
   assert.equal(h.run('migrated.sequence[migrated.sequenceIndex].questionId'),'Q2');
@@ -50,8 +50,8 @@ test('legacy migration maps current question and standby and preserves an intent
   assert.equal(h.run('migrated.sequence[migrated.sequenceIndex].screenId'),'standby');
   assert.equal(h.run('migrated.customScreens.find(s=>s.id==="standby").title'),'');
   h.run('state.sequence=[]; state=normalizeState(state);');
-  assert.equal(h.run('state.sequence.length'),0);
-  assert.equal(h.run('state.sequenceIndex'),-1);
+  assert.deepEqual(h.json('state.sequence.map(item=>item.screenId)'),['revival1-start','revival2-start','final-start']);
+  assert.equal(h.run('state.sequenceIndex'),0);
   assert.equal(h.run('state.displayMode'),'screen');
 });
 
@@ -216,7 +216,8 @@ test('migration preserves an already-presented reserve question without adding o
 test('locking a full sequence blanks the projector without mutating the event construction', () => {
   const h=fixture();
   h.run('state.sequence=Array.from({length:2000},()=>({type:"question",questionId:"Q1"})); goSequence(1999); toggleAnswer(); lockConsole(); state=loadPrivateState();');
-  assert.equal(h.run('state.sequence.length'),2000);
+  assert.equal(h.run('state.sequence.length'),2003);
+  assert.equal(h.run('state.sequence.filter(item=>item.type==="question").length'),2000);
   assert.equal(h.run('state.sequenceIndex'),1999);
   assert.equal(h.run('persistenceBlocked'),false);
   const payload=JSON.parse(h.storage.get(h.run('PUBLIC_STORAGE_KEY')));

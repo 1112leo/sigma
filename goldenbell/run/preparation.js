@@ -57,7 +57,9 @@ function prepareQuestionImport(rows, existing, mode, options) {
     } else if (mode === 'update') add(row, 'ID 업데이트에는 ID가 필요합니다.');
     const prior = existing.find(question => question.id === item.id);
     if (mode === 'append' && prior) add(row, `이미 존재하는 ID: ${item.id}`);
-    for (const [field, values] of Object.entries(enums)) if (Object.hasOwn(item, field) && !values.includes(item[field])) add(row, `${field}: 허용되지 않은 값`);
+    for (const [field, values] of Object.entries(enums)) {
+      if (field !== 'reviewStatus' && Object.hasOwn(item, field) && !values.includes(item[field])) add(row, `${field}: 허용되지 않은 값`);
+    }
     if (Object.hasOwn(item, 'timeLimit') && !validTime(item.timeLimit)) add(row, 'timeLimit: 1~600초 정수 필요');
     if (!Object.hasOwn(item, 'timeLimit') && Object.hasOwn(item, 'seconds')) {
       if (!validTime(item.seconds)) add(row, 'seconds: 1~600초 정수 필요');
@@ -101,7 +103,6 @@ function checkPreparation(source, options) {
     if (!q.question.trim()) add('error', 'empty-question', `${label}: 문제 내용 없음`, q.id);
     if (!q.answer.trim()) add('error', 'empty-answer', `${label}: 정답 없음`, q.id);
     if (!options.validTime(q.timeLimit)) add('error', 'invalid-time', `${label}: 제한시간 오류`, q.id);
-    if (q.usageStatus === 'active' && q.reviewStatus !== 'final') add('warning', 'unfinal', `${label}: 최종 검수 미완료`, q.id);
     if (q.usageStatus === 'active' && !sequenceCounts.has(q.id)) add('warning', 'unsequenced', `${label}: 행사 구성에 없는 사용 문제`, q.id);
     if (sequenceCounts.get(q.id) > 1) add('warning', 'duplicate', `${label}: 행사 구성에 ${sequenceCounts.get(q.id)}번 등장`, q.id);
     if ((q.image && !options.safeImage(q.image)) || (q.imageId && !q.image)) add('error', 'image', `${label}: 이미지 참조 오류`, q.id);

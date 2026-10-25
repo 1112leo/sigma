@@ -9,7 +9,7 @@ test('event page uses the agreed date, tentative hours and benefits', () => {
   assert.match(html, /16:00–17:30 예정/);
   assert.match(html, /16:00 — 17:30/);
   assert.doesNotMatch(html, /18:00/);
-  assert.match(html, /행사 시간은 준비 상황에 따라 조정될 수 있습니다/);
+  assert.match(html, /행사 시간은 (?:준비 )?상황에 따라 조정될 수 있습니다/);
   assert.match(html, /이삭토스트/);
   assert.match(html, /문화상품권/);
   const awards = [...html.matchAll(/<li\b[^>]*class="sigma-prize-award[^\"]*"[^>]*>([\s\S]*?)<\/li>/g)]

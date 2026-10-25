@@ -1,7 +1,7 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const harness=require('./test-harness.cjs');
-function fixture(){const h=harness();h.run(`state.questions=[migrateQuestion({id:'M',question:'main',answer:'A',round:'main1'}),migrateQuestion({id:'V',question:'revival',answer:'A',round:'revival1'}),migrateQuestion({id:'H',question:'hard',answer:'A',category:'hard',round:'main2'})];state.sequence=[{type:'question',questionId:'M'},{type:'screen',screenId:'revival1-start'},{type:'question',questionId:'V'},{type:'screen',screenId:'main-resume'},{type:'question',questionId:'H'},{type:'screen',screenId:'end'}];activateSequence(state,0);`);return h;}
+function fixture(){const h=harness();h.run(`state.questions=[migrateQuestion({id:'M',question:'main',answer:'A',round:'main1'}),migrateQuestion({id:'V',question:'revival',answer:'A',round:'revival1'}),migrateQuestion({id:'H',question:'hard',answer:'A',category:'hard',round:'main2'})];state.sequence=[{type:'question',questionId:'M'},{type:'screen',screenId:'revival1-start'},{type:'question',questionId:'V'},{type:'screen',screenId:'main-resume'},{type:'question',questionId:'H'},{type:'screen',screenId:'end'}];ensureRequiredRoundScreens(state.sequence,state.questions);activateSequence(state,0);`);return h;}
 test('slide mode never skips; started session skips completed intro and questions after returning to main',()=>{
  const h=fixture();h.run('toggleAnswer();startSpecialRound(1);advancePresentation();resumeMain();advancePresentation();');
  assert.equal(h.run('state.sequenceIndex'),1);

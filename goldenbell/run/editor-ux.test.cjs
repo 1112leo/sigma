@@ -64,10 +64,11 @@ test('collapsed editor sections retain all inputs and settings forms for saving'
   const h = harness();
   h.run(`modal={type:'question',question:migrateQuestion({id:'Q',question:'문제',answer:'1',judgeNote:'private'})};`);
   const html=h.run('renderModal()');
-  for(const id of ['id','category','round','seconds','title','question','image','image-alt','answer','explanation','acceptedAnswers','judgeNote','note','author','usageStatus','difficulty','reviewStatus']) {
+  for(const id of ['id','category','round','seconds','title','question','image','image-alt','answer','explanation','acceptedAnswers','judgeNote','note','author','usageStatus','difficulty']) {
     assert.equal(html.split(`id="q-${id}"`).length-1,1,id);
   }
   assert.match(html,/<summary>진행자 메모<\/summary>/);
+  assert.doesNotMatch(html,/q-reviewStatus|검수/);
   assert.match(html,/private<\/textarea>/);
   for(const id of ['settings-form','run-settings-form','event-title','event-date','event-place','message-tagline','message-lobby','message-opening','message-rules','message-break','message-ending','current-pin','new-pin','new-pin-confirm']) {
     assert.equal(h.run('renderSettings()').split(`id="${id}"`).length-1,1,id);

@@ -4,7 +4,7 @@ const harness=require('./test-harness.cjs');
 
 function fixture(){
  const h=harness();
- h.run(`state.questions=[migrateQuestion({id:'Q1',question:'문제',answer:'1'}),migrateQuestion({id:'Q2',question:'다른 문제',answer:'2'})];state.sequence=[{type:'question',questionId:'Q1'},{type:'question',questionId:'Q2'},{type:'question',questionId:'Q1'}];activateSequence(state,2);startRun();state.timer.remaining=17;state.runtime.run.completed=[0];state.runtime.mainResume={index:0,questionId:'Q1',remaining:12};state.answerVisible=true;openQuestion('Q1');`);
+ h.run(`state.questions=[migrateQuestion({id:'Q1',question:'문제',answer:'1'}),migrateQuestion({id:'Q2',question:'다른 문제',answer:'2'})];state.sequence=[{type:'question',questionId:'Q1'},{type:'question',questionId:'Q2'},{type:'question',questionId:'Q1'}];ensureRequiredRoundScreens(state.sequence,state.questions);activateSequence(state,2);startRun();state.timer.remaining=17;state.runtime.run.completed=[0];state.runtime.mainResume={index:0,questionId:'Q1',remaining:12};state.answerVisible=true;openQuestion('Q1');`);
  return h;
 }
 
@@ -12,7 +12,7 @@ test('renaming updates all occurrences and bookmark without losing progress, tim
  const h=fixture();
  h.fields['q-id']={value:'  일반-01  '};
  h.run('saveQuestion();state=loadPrivateState();');
- assert.deepEqual(h.json('state.sequence.map(item=>item.questionId)'),['일반-01','Q2','일반-01']);
+ assert.deepEqual(h.json('state.sequence.filter(item=>item.type==="question").map(item=>item.questionId)'),['일반-01','Q2','일반-01']);
  assert.equal(h.run('currentQuestion().id'),'일반-01');
  assert.equal(h.run('state.sequenceIndex'),2);
  assert.equal(h.run('state.timer.remaining'),17);

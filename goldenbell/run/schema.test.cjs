@@ -25,10 +25,11 @@ test('new fields round-trip through JSON and all enums are validated independent
   const h = createHarness();
   h.run(`state.questions[0] = migrateQuestion({id:'Q2', category:'hard', round:'revival1', usageStatus:'reserve', difficulty:'extreme', reviewStatus:'peer-reviewed', acceptedAnswers:'2 또는 둘', judgeNote:'동치 인정', author:'출제자', timeLimit:60, createdAt:'2026-08-01T00:00:00.000Z', updatedAt:'2026-08-02T00:00:00.000Z'});`);
   assert.deepEqual(h.json('normalizeState(JSON.parse(JSON.stringify(state)))'), h.json('state'));
-  for (const field of ['category', 'round', 'usageStatus', 'difficulty', 'reviewStatus']) {
+  for (const field of ['category', 'round', 'usageStatus', 'difficulty']) {
     assert.equal(h.run(`questionEnums.${field}.every(value => validateQuestion({...state.questions[0], ${field}:value}).length === 0)`), true);
     assert.equal(h.run(`validateQuestion({...state.questions[0], ${field}:'invalid'}).some(error => error.field === '${field}')`), true);
   }
+  assert.equal(h.run("validateQuestion({...state.questions[0], reviewStatus:'retired-status'}).length"),0);
   for (const value of [0, 601, 1.5, '', null, true, 'bad']) {
     assert.equal(h.run(`validTimeLimit(${JSON.stringify(value)})`), false, String(value));
   }

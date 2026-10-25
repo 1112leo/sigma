@@ -4,7 +4,7 @@ const createHarness = require('./test-harness.cjs');
 
 function fixture() {
   const h=createHarness();
-  h.run(`state.questions=[migrateQuestion({id:'Q1',question:'첫 문제',answer:'첫 답',timeLimit:30,round:'main1'}),migrateQuestion({id:'Q2',question:'두 번째',answer:'둘',timeLimit:40,round:'main2'}),migrateQuestion({id:'R',question:'예비 문제',answer:'예비답',timeLimit:15,round:'main1',usageStatus:'reserve'})]; state.sequence=[{type:'screen',screenId:'opening'},{type:'question',questionId:'Q1'},{type:'question',questionId:'Q2'},{type:'question',questionId:'Q1'},{type:'screen',screenId:'end'}]; activateSequence(state,1);`);
+  h.run(`state.questions=[migrateQuestion({id:'Q1',question:'첫 문제',answer:'첫 답',timeLimit:30,round:'main1'}),migrateQuestion({id:'Q2',question:'두 번째',answer:'둘',timeLimit:40,round:'main2'}),migrateQuestion({id:'R',question:'예비 문제',answer:'예비답',timeLimit:15,round:'main1',usageStatus:'reserve'})]; state.sequence=[{type:'screen',screenId:'opening'},{type:'question',questionId:'Q1'},{type:'question',questionId:'Q2'},{type:'question',questionId:'Q1'},{type:'screen',screenId:'end'}]; ensureRequiredRoundScreens(state.sequence,state.questions); activateSequence(state,1);`);
   return h;
 }
 
