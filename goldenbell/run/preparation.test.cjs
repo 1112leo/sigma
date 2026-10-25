@@ -140,7 +140,7 @@ test('full restore cancels older async batch and reset storage failure rolls bac
   const h=setup(); const readers=[]; h.context.FileReader=class { constructor(){readers.push(this);} readAsText(){} };
   h.run('downloadBackup=()=>true; isUnlocked=()=>true; let finishImages; brokenImages=()=>new Promise(resolve=>{finishImages=resolve}); importDraft={rows:input,mode:"append"}; const pending=applyBatch();');
   h.run('importData({target:{files:[{size:10}],value:""}})');
-  readers[0].result=JSON.stringify({questions:[{id:'RESTORED',question:'Restored',answer:'A'}]}); await readers[0].onload();
+  readers[0].result=JSON.stringify({schemaVersion:3,questions:[{id:'RESTORED',question:'Restored',answer:'A'}]}); await readers[0].onload();
   h.run('finishImages([])'); await h.run('pending');
   assert.deepEqual(h.json('state.questions.map(q=>q.id)'),['RESTORED']); assert.equal(h.run('importDraft'),null);
   const before=h.json('state'); h.context.localStorage.setItem=()=>{throw new Error('quota')}; await h.run('handleAction("reset-all")'); assert.deepEqual(h.json('state'),before);
@@ -157,7 +157,7 @@ test('backup failure prevents reset, full restore and question import', async ()
   assert.deepEqual(h.json('state'),before);
   assert.match(h.run('importDraft.error'),/백업을 시작하지 못해/);
   h.run('importData({target:{files:[{size:10}],value:""}})');
-  readers[0].result=JSON.stringify({questions:[{id:'RESTORED',question:'Restored',answer:'A'}]});
+  readers[0].result=JSON.stringify({schemaVersion:3,questions:[{id:'RESTORED',question:'Restored',answer:'A'}]});
   await readers[0].onload();
   assert.deepEqual(h.json('state'),before);
 });

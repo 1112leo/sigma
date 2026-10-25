@@ -28,15 +28,49 @@ function parseCSV(text) {
     return Object.fromEntries(headers.map((header, col) => [header, header === 'round' && row[col] === '' ? null : row[col]]));
   });
 }
+const fullBackupImportMessage = '전체 백업 파일입니다. 행사·슬라이드 설정 → 백업·복원에서 불러와 주세요.';
+const stateMarkerKeys = ['schemaVersion', 'settings', 'event', 'messages', 'sequence', 'customScreens', 'runtime', 'runSettings', 'currentIndex', 'sequenceIndex', 'displayMode', 'timer', 'answerVisible', 'tab'];
+const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
+const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+function isFullBackup(value) {
+  return isRecord(value) && stateMarkerKeys.some(key => own(value, key));
+}
+function hasExactOwnKeys(value, expected) {
+  const keys = Reflect.ownKeys(value);
+  return keys.length === expected.length && expected.every(key => own(value, key));
+}
+function questionImportRows(value) {
+  let rows;
+  if (Array.isArray(value)) rows = value;
+  else if (isRecord(value)) {
+    if (isFullBackup(value)) throw new Error(fullBackupImportMessage);
+    if (own(value, 'type') && value.type === 'question-import') {
+      if (!hasExactOwnKeys(value, ['type', 'questions']) || !Array.isArray(value.questions)) throw new Error('문제 가져오기 형식이 올바르지 않습니다.');
+      rows = value.questions;
+    } else if (own(value, 'questions')) {
+      if (!hasExactOwnKeys(value, ['questions']) || !Array.isArray(value.questions)) throw new Error('문제 가져오기 형식이 올바르지 않습니다.');
+      rows = value.questions;
+    } else throw new Error('문제 가져오기 형식이 올바르지 않습니다.');
+  } else throw new Error('문제 가져오기 형식이 올바르지 않습니다.');
+  if (rows.some(isFullBackup)) throw new Error(fullBackupImportMessage);
+  return rows;
+}
+function assertFullBackup(value) {
+  if (Array.isArray(value) || (isRecord(value) && own(value, 'type') && value.type === 'question-import') || (isRecord(value) && hasExactOwnKeys(value, ['questions']) && Array.isArray(value.questions))) throw new Error('question-only-file');
+  if (isFullBackup(value) && Array.isArray(value.questions)) return value;
+  throw new Error('invalid-backup');
+}
 function parseQuestionImport(text, format = 'json') {
   if (typeof text !== 'string' || text.length > 10 * 1024 * 1024) throw new Error('10MB 이하 파일만 가져올 수 있습니다.');
   let rows;
   if (format === 'csv') rows = parseCSV(text);
-  else { const parsed = JSON.parse(text.replace(/^\uFEFF/, '')); rows = Array.isArray(parsed) ? parsed : parsed?.questions; }
+  else rows = questionImportRows(JSON.parse(text.replace(/^\uFEFF/, '')));
   if (!Array.isArray(rows) || !rows.length || rows.length > 500) throw new Error('문제 배열은 1~500개여야 합니다.');
   return rows;
 }
 function prepareQuestionImport(rows, existing, mode, options) {
+  try { rows = questionImportRows(rows); }
+  catch (error) { return { errors: [{ row: 0, message: error.message }], questions: [] }; }
   const errors = [], prepared = [], ids = new Set();
   const { enums, migrate, validTime, safeImage } = options;
   const add = (row, message) => errors.push({ row, message });
@@ -111,4 +145,4 @@ function checkPreparation(source, options) {
   for (const round of ['revival1', 'revival2', 'final']) if (!source.questions.some(q => q.round === round && q.usageStatus === 'active' && sequenceCounts.has(q.id))) add('warning', 'empty-round', `${round}: 구성에 사용 문제가 없습니다.`);
   return { issues, normal: source.questions.filter(q => !badIds.has(q.id)).length, reserve: source.questions.filter(q => q.usageStatus === 'reserve').length };
 }
-export { parseCSV, parseQuestionImport, prepareQuestionImport, checkPreparation };
+export { parseCSV, parseQuestionImport, prepareQuestionImport, checkPreparation, questionImportRows, isFullBackup, assertFullBackup };

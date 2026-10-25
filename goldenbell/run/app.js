@@ -1,6 +1,6 @@
 import { defaultRuntime, validClockTime, validEventDate, normalizeRuntime, effectiveSequence, runtimePosition, activeItem, runtimeLog, roundProgress, eventClock } from './runtime.js?v=20260926-break1';
 import { mathParts, renderMath, richText, mathProjection } from './math.js?v=20260831-preparation5';
-import { parseQuestionImport, prepareQuestionImport } from './preparation.js?v=20261026-rounds';
+import { parseQuestionImport, prepareQuestionImport, questionImportRows, assertFullBackup } from './preparation.js?v=20261026-import-kind';
 
 const PRIVATE_STORAGE_KEY = 'sigma-goldenbell-v1';
 const PUBLIC_STORAGE_KEY = 'sigma-goldenbell-public-v2';
@@ -1729,15 +1729,23 @@ function clearPreparationDrafts() {
   modal = null;
 }
 function prepareBatch() {
-  importDraft.newIds ||= importDraft.rows.map(() => createId());
-  return prepareQuestionImport(importDraft.rows, state.questions, importDraft.mode, { ...importOptions(), newIds: importDraft.newIds });
+  try {
+    // Keep the source envelope until application; a preview's extracted rows do not prove its file kind.
+    const rows = typeof importDraft.text === 'string'
+      ? parseQuestionImport(importDraft.text, importDraft.format || 'json')
+      : questionImportRows(importDraft.rows);
+    importDraft.newIds ||= rows.map(() => createId());
+    return prepareQuestionImport(rows, state.questions, importDraft.mode, { ...importOptions(), newIds: importDraft.newIds });
+  } catch (error) {
+    return { errors: [{ row: 0, message: error.message }], questions: [], prepared: [] };
+  }
 }
 function parseBatch() {
   const text = document.getElementById('batch-text').value;
   const format = document.getElementById('batch-format').value;
   importDraft = { text, format, mode: importDraft?.mode || 'append' };
   try { importDraft.rows = parseQuestionImport(text, format); }
-  catch (error) { importDraft.error = `파일 해석 오류: ${error.message}`; }
+  catch (error) { importDraft.error = error.message; }
   render();
 }
 async function readBatchFile(event) {
@@ -1749,7 +1757,7 @@ async function readBatchFile(event) {
   try {
     draft.text = await file.text();
     draft.rows = parseQuestionImport(draft.text, draft.format);
-  } catch (error) { draft.error = `파일 해석 오류: ${error.message}`; }
+  } catch (error) { draft.error = error.message; }
   finally { draft.busy = false; if (importDraft === draft && state) render(); }
 }
 async function brokenImages(questions) {
@@ -1802,14 +1810,14 @@ function commitQuestionBatch(result, mode) {
       else next.displayMode = 'question';
     } else next.displayMode = 'screen';
   });
-  if (applied) { removeUnusedImages(before, state); clearPreparationDrafts(); render(); toast('문제를 적용했습니다. 행사 구성과 점검 결과를 확인해주세요.'); }
+  if (applied) { removeUnusedImages(before, state); clearPreparationDrafts(); render(); toast('문제를 적용했습니다. 행사 구성을 확인해주세요.'); }
   return applied;
 }
 async function applyBatch() {
   const draft = importDraft;
   if (!draft?.rows || draft.busy || !state || persistenceBlocked) return;
   let result = prepareBatch();
-  if (result.errors.length) return;
+  if (result.errors.length) { draft.error = result.errors[0].message; render(); return; }
   draft.busy = true;
   draft.error = '';
   render();
@@ -1818,11 +1826,19 @@ async function applyBatch() {
     if (draft !== importDraft || !state || !isUnlocked()) return;
     if (failed.length) throw new Error(`이미지를 읽을 수 없는 문제: ${failed.join(', ')}`);
     result = prepareBatch(); // Merge against current data, not an old preview.
-    if (result.errors.length) return;
+    if (result.errors.length) throw new Error(result.errors[0].message);
     if (draft.mode === 'replace' && !confirm('전체 문제를 교체할까요? 타이머와 정답 공개 상태는 초기화됩니다. 기존 행사 구성은 유지되어 누락 참조가 생길 수 있습니다. 적용 전 JSON 백업을 저장합니다.')) return;
     if (draft.mode !== 'replace' && !mayNavigate()) return;
     if (!await downloadBackup('before-question-import')) throw new Error('JSON 백업을 시작하지 못해 문제 가져오기를 중단했습니다.');
+    if (draft !== importDraft || !state || !isUnlocked()) return;
+    result = prepareBatch(); // Recheck file kind after the asynchronous backup, before image or state writes.
+    if (result.errors.length) throw new Error(result.errors[0].message);
+    const sourceSignature = JSON.stringify([draft.text, draft.rows, draft.mode]);
     const created = await storeChangedImages(result.questions, state.questions);
+    if (draft !== importDraft || !state || !isUnlocked() || sourceSignature !== JSON.stringify([draft.text, draft.rows, draft.mode])) {
+      await Promise.allSettled(created.map(removeImage));
+      return;
+    }
     if (!commitQuestionBatch(result, draft.mode)) await Promise.allSettled(created.map(removeImage));
   } catch (error) { draft.error = error.message; }
   finally { draft.busy = false; if (state) render(); }
@@ -1832,7 +1848,7 @@ function renderQuestionMathPreview(question) {
 }
 function renderPreparation() {
   const preview = importDraft?.rows ? prepareBatch() : null;
-  return `<div class="import-layout"><section class="card import-card"><h2>문제 가져오기</h2><p class="sub">JSON · CSV로 문제를 한 번에 추가하거나 업데이트합니다.</p>
+  return `<div class="import-layout"><section class="card import-card"><h2>문제 가져오기</h2><p class="sub">JSON · CSV로 문제만 추가하거나 업데이트합니다. 전체 백업은 설정의 백업·복원에서 불러와 주세요.</p>
     <form id="batch-form" class="form-grid one-column"><div class="field"><label for="batch-file">JSON / CSV 파일</label><input id="batch-file" type="file" accept=".json,.csv,application/json,text/csv" ${importDraft?.busy ? 'disabled' : ''}></div><details class="compact-details" ${importDraft?.text && !importDraft?.rows ? 'open' : ''}><summary>텍스트로 붙여넣기</summary><div class="form-grid one-column"><div class="field"><label for="batch-format">붙여넣기 형식</label><select id="batch-format" ${importDraft?.busy ? 'disabled' : ''}>${selectOptions({ json: 'JSON', csv: 'CSV' }, importDraft?.format || 'json')}</select></div><div class="field"><label for="batch-text">문제 데이터 붙여넣기</label><textarea id="batch-text" rows="6" ${importDraft?.busy ? 'disabled' : ''}>${esc(importDraft?.text || '')}</textarea></div><button type="submit" class="btn" ${importDraft?.busy ? 'disabled' : ''}>미리보기</button></div></details></form>
     <details class="compact-details import-format"><summary>가져오기 형식</summary><p class="field-help">CSV 헤더: id,category,round,question,answer,explanation,acceptedAnswers,judgeNote,author,difficulty,timeLimit,usageStatus<br>생략된 선택 필드는 새 문제의 기본값을 사용합니다. ID 업데이트는 생략된 기존 필드를 유지합니다. 빈 round는 미지정입니다.</p><p class="field-help">전체 백업 복원은 설정의 ‘백업·복원’을 사용하세요.</p></details>
     ${importDraft?.error ? `<p class="overflow-notice" role="alert">${esc(importDraft.error)}</p>` : ''}
@@ -1846,7 +1862,7 @@ function renderSettings() {
       <div class="field wide"><label for="message-tagline">공통 부제</label><input id="message-tagline" maxlength="100" value="${esc(state.messages.tagline)}"></div><h3 class="form-section-title wide">슬라이드 문구</h3><div class="field wide"><label for="message-lobby">대기 슬라이드</label><input id="message-lobby" maxlength="100" value="${esc(state.messages.lobby)}"></div><div class="field wide"><label for="message-opening">오프닝 슬라이드</label><input id="message-opening" maxlength="100" value="${esc(state.messages.opening)}"></div><div class="field wide"><label for="message-rules">진행 안내 (한 줄에 하나씩)</label><textarea id="message-rules" maxlength="2000">${esc(state.messages.rules)}</textarea><span class="field-help">프로젝터에는 최대 1,200자까지만 표시됩니다.</span></div><div class="field wide"><label for="message-break">휴식 슬라이드</label><input id="message-break" maxlength="100" value="${esc(state.messages.break)}"></div><div class="field wide"><label for="message-ending">마침 슬라이드</label><input id="message-ending" maxlength="100" value="${esc(state.messages.ending)}"></div><div class="wide settings-save"><button class="btn primary" type="submit">설정 저장</button></div>
     </form></article></section>
     <aside class="stack">${renderRunSettings()}<details class="card compact-details"><summary>진행 PIN 변경</summary><div class="form-grid one-column"><div class="field"><label for="current-pin">현재 PIN</label><input id="current-pin" type="password" inputmode="numeric" maxlength="12" autocomplete="current-password"></div><div class="field"><label for="new-pin">새 PIN (4~12자리 숫자)</label><input id="new-pin" type="password" inputmode="numeric" maxlength="12" autocomplete="new-password"></div><div class="field"><label for="new-pin-confirm">새 PIN 확인</label><input id="new-pin-confirm" type="password" inputmode="numeric" maxlength="12" autocomplete="new-password"></div><button class="btn" data-action="change-pin">PIN 변경</button></div><p class="security-caption">이 PIN은 진행 노트북의 관리 화면을 잠그는 용도입니다. 공개 인터넷 서비스용 계정 인증은 아닙니다.</p></details>
-      <article class="card"><h2>백업·복원</h2><p class="sub">문제와 슬라이드 문구는 이 브라우저에 자동 저장됩니다. 행사 전날과 시작 직전에 JSON 백업을 받아두세요.</p><div class="data-actions"><button class="btn" data-action="export">JSON 백업</button><label class="btn file-button">백업 불러오기<input data-action="import" type="file" accept="application/json" hidden></label></div><details class="compact-details danger-zone"><summary>데이터 초기화</summary><button class="btn danger-ghost" data-action="reset-all">전체 초기화</button></details></article>
+      <article class="card"><h2>백업·복원</h2><p class="sub">문제와 슬라이드 문구는 이 브라우저에 자동 저장됩니다. 행사 전날과 시작 직전에 JSON 백업을 받아두세요.</p><p class="field-help">전체 백업은 문제·행사 설정·슬라이드 구성을 함께 복원합니다. 문제 전용 파일은 문제 가져오기를 사용하세요.</p><div class="data-actions"><button class="btn" data-action="export">JSON 백업</button><label class="btn file-button">전체 백업 불러오기<input data-action="import" type="file" accept="application/json" hidden></label></div><details class="compact-details danger-zone"><summary>데이터 초기화</summary><button class="btn danger-ghost" data-action="reset-all">전체 초기화</button></details></article>
       <details class="card compact-details"><summary>다른 노트북에서 사용하기</summary><p>배포본에서도 진행자와 프로젝터 창은 같은 브라우저에서 연결됩니다. 다른 노트북에서는 JSON 백업을 불러와 이어갈 수 있습니다.</p></details>
     </aside></div>`;
 }
@@ -2470,12 +2486,11 @@ function importData(event) {
   reader.onload = async () => {
     if (token !== backupReadToken || !state || !isUnlocked()) return;
     try {
-      const parsed = JSON.parse(reader.result);
-      if (!parsed || !Array.isArray(parsed.questions)) throw new Error('invalid-backup');
+      const parsed = assertFullBackup(JSON.parse(String(reader.result).replace(/^\uFEFF/, '')));
       if (!confirm('현재 문제·슬라이드 설정을 백업 파일로 교체할까요? 기존 상태는 자동 백업됩니다.')) return;
       if (!await downloadBackup('before-import')) return;
       if (token !== backupReadToken || !state || !isUnlocked()) return;
-      const imported = normalizeState(parsed);
+      const imported = normalizeState(assertFullBackup(parsed));
       const created = await prepareImages(imported, { fresh: true });
       if (token !== backupReadToken || !state || !isUnlocked()) { await Promise.allSettled(created.map(removeImage)); return; }
       const previous = state;
@@ -2500,6 +2515,7 @@ function importData(event) {
       toast('백업을 안전하게 불러왔습니다.');
     } catch (error) {
       alert(error.message === 'storage-limit' ? '브라우저 저장 공간이 부족해 복원하지 못했습니다. 기존 데이터는 유지됩니다.'
+        : error.message === 'question-only-file' ? '문제 전용 파일입니다. 문제 가져오기에서 불러와 주세요.'
         : error.message?.startsWith('missing-backup-image') ? '백업에 사진 데이터가 없어 완전 복원할 수 없습니다.'
           : error.message?.includes('image-db') ? '사진 저장소를 사용할 수 없어 복원하지 못했습니다. 기존 데이터는 유지됩니다.'
             : '올바른 골든벨 백업 JSON 파일이 아닙니다.');
