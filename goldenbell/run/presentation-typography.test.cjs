@@ -166,5 +166,5 @@ test('answer scales keep words, units, and choice indices below the main numeric
   assert.ok(prose <= 64 && prose < numeric);
   assert.match(css, /\.screen-answer-body > strong\.quantity,\s*\.screen-answer-body > strong\.choice,\s*\.screen-answer-body > strong\.text\s*\{\s*font-size:\s*72px;/);
   assert.match(css, /\.screen-answer-body \.answer-unit\s*\{\s*font-size:\s*\.75em;/);
-  assert.match(css, /\.screen-answer-body \.answer-choice-index\s*\{[^}]*font-size:\s*\.55em;/);
+  assert.match(css, /\.screen-answer-body \.answer-choice-index\s*\{[^}]*font-size:\s*\.78em;/);
 });

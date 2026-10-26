@@ -761,6 +761,12 @@ function questionMathClass(value = '') {
   return '';
 }
 
+function styleAnswerMath(html) {
+  // Keep KaTeX glyphs and accessible MathML; only adjust their visual proportions.
+  return html.replace(/<span class="((?:mord|mbin|mrel)(?: answer-sign)?)">([−=])<\/span>/g,
+    '<span class="$1 answer-operator">$2</span>');
+}
+
 function answerTextMarkup(value = '') {
   const text = String(value).trim();
   const choice = /^([①②③④⑤])\s*(.+)$/.exec(text);
@@ -771,14 +777,19 @@ function answerTextMarkup(value = '') {
       + '</span> <span class="answer-choice-value">' + answerTextMarkup(content) + '</span></span>';
   }
   const quantity = /^([+-]?\d+(?:\.\d+)?)\s*([가-힣]+)$/.exec(text);
-  if (quantity) return '<span class="answer-quantity">' + richText('$' + quantity[1] + '$')
+  if (quantity) return '<span class="answer-quantity">' + answerTextMarkup(quantity[1])
     + '<span class="answer-unit">' + esc(quantity[2]) + '</span></span>';
   let math = '';
   if (/^[+-]?\d+(?:\.\d+)?(?:\s*,\s*[+-]?\d+(?:\.\d+)?)*$/.test(text)) math = text;
   else if (/^[OX]$/.test(text)) math = '\\mathrm{' + text + '}';
   else if (/^[=+\-−×÷]$/.test(text)) math = text;
-  if (!math) return richText(value);
-  return richText('$' + math + '$');
+  if (!math) return styleAnswerMath(richText(value));
+  const html = richText('$' + math + '$');
+  // Only signs in plain numeric answers receive optical alignment. Authored
+  // formulas retain KaTeX's mathematical baseline and operator placement.
+  return styleAnswerMath(/^[+-]?\d+(?:\.\d+)?(?:\s*,\s*[+-]?\d+(?:\.\d+)?)*$/.test(text)
+    ? html.replace(/<span class="mord">([−+])<\/span>/g, '<span class="mord answer-sign">$1</span>')
+    : html);
 }
 
 function questionTextMarkup(value = '') {
@@ -1052,7 +1063,7 @@ function renderTab() {
 }
 
 function presentationFrame(payload) {
-  const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="./vendor/katex/katex.min.css"><link rel="stylesheet" href="./styles.css?v=20261026-rounds"><style>html,body{margin:0;overflow:hidden}</style></head><body>${renderScreenMarkup(payload)}</body></html>`;
+  const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="./vendor/katex/katex.min.css"><link rel="stylesheet" href="./styles.css?v=20261026-rounds-symbols"><style>html,body{margin:0;overflow:hidden}</style></head><body>${renderScreenMarkup(payload)}</body></html>`;
   return `<iframe class="presentation-frame" title="프레젠테이션 화면" sandbox="allow-same-origin" tabindex="-1" srcdoc="${esc(html)}"></iframe>`;
 }
 
@@ -1110,6 +1121,50 @@ function fitQuestionText(frame) {
   question.style.fontSize = `${Math.floor(low)}px`;
 }
 
+function alignAnswerTypography(frame) {
+  const doc = frame.contentDocument;
+  if (!doc) return;
+  const index = doc.querySelector('.screen-answer-body .answer-choice-index');
+  const signs = [...doc.querySelectorAll('.screen-answer-body .answer-sign')];
+  if (!index && !signs.length) return;
+  for (const element of [...signs, index].filter(Boolean)) element.style.removeProperty('top');
+  const context = doc.createElement('canvas').getContext('2d');
+  if (!context) return;
+  const inkBounds = element => {
+    if (!element) return null;
+    const walker = doc.createTreeWalker(element, 4);
+    let top = Infinity, bottom = -Infinity, node;
+    while ((node = walker.nextNode())) {
+      if (!node.nodeValue.trim() || node.parentElement.closest('.katex-mathml, .katex-strut')) continue;
+      const style = frame.contentWindow.getComputedStyle(node.parentElement);
+      if (style.display === 'none' || style.visibility === 'hidden') continue;
+      context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+      const metrics = context.measureText(node.nodeValue);
+      if (![metrics.fontBoundingBoxAscent, metrics.fontBoundingBoxDescent,
+        metrics.actualBoundingBoxAscent, metrics.actualBoundingBoxDescent].every(Number.isFinite)) continue;
+      const range = doc.createRange();
+      range.selectNodeContents(node);
+      for (const rect of range.getClientRects()) {
+        if (!rect.width || !rect.height) continue;
+        const baseline = rect.top + metrics.fontBoundingBoxAscent;
+        top = Math.min(top, baseline - metrics.actualBoundingBoxAscent);
+        bottom = Math.max(bottom, baseline + metrics.actualBoundingBoxDescent);
+      }
+    }
+    return Number.isFinite(top) && Number.isFinite(bottom) ? { top, bottom } : null;
+  };
+  const align = (element, reference) => {
+    const ink = inkBounds(element), target = inkBounds(reference);
+    if (!ink || !target) return;
+    const offset = (target.top + target.bottom - ink.top - ink.bottom) / 2;
+    // Guard against invalid font metrics without moving a glyph off its line.
+    const font = parseFloat(frame.contentWindow.getComputedStyle(element).fontSize);
+    if (Math.abs(offset) <= font * .5) element.style.top = `${offset}px`;
+  };
+  for (const sign of signs) align(sign, sign.nextElementSibling);
+  if (index) align(index, doc.querySelector('.screen-answer-body .answer-choice-value'));
+}
+
 function fitRevealedAnswer(frame) {
   fitQuestionText(frame);
   const panel = frame.contentDocument?.querySelector('.screen-answer');
@@ -1123,6 +1178,7 @@ function fitRevealedAnswer(frame) {
     question.style.fontSize = `${fontSize * ratio}px`;
   }
   content.style.zoom = '1';
+  alignAnswerTypography(frame);
   const style = frame.contentWindow.getComputedStyle(panel);
   const availableHeight = Math.max(1, panel.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom));
   const availableWidth = Math.max(1, panel.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight));

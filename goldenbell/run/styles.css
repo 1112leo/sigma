@@ -580,7 +580,10 @@ kbd { min-width: 23px; padding: 3px 6px; border: 1px solid #536985; border-botto
 .screen-answer-body .answer-choice { display: inline-flex; align-items: baseline; justify-content: center; max-width: 100%; gap: .12em; }
 .screen-answer-body .answer-unit { font-size: .75em; font-weight: 650; letter-spacing: -.02em; }
 .screen-answer-body .answer-choice { gap: .22em; }
-.screen-answer-body .answer-choice-index { flex: none; font-size: .55em; font-weight: 600; letter-spacing: normal; }
+.screen-answer-body .answer-choice-index { flex: none; font-size: .78em; font-weight: 600; letter-spacing: normal; }
+.screen-answer-body .answer-operator { display: inline-block; margin-inline: -.085em; font-weight: 700; transform: scaleX(.78); }
+.screen-answer-body .answer-choice-index,
+.screen-answer-body .answer-sign { position: relative; }
 .screen-answer-body .answer-choice-value { min-width: 0; }
 .answer-explanation { max-width: 940px; margin: 34px auto 0; padding-top: 22px; border-top: 1px solid #526077; }
 .answer-explanation > span { display: block; color: #b4c5dd; font-size: 17px; font-weight: 800; letter-spacing: .12em; }
