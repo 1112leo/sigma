@@ -114,7 +114,7 @@ function defaultState() {
       lobby: '잠시 후 시작합니다',
       opening: '지금, 골든벨을 시작합니다',
       tagline: '수학으로 하나 되는 시간',
-      rules: '문제가 나오면 제한시간 안에 답을 적어주세요.\n정답 공개 전까지 답판을 들지 말아주세요.\n판정이 애매한 경우 진행자의 안내를 따라주세요.',
+      rules: '문제가 나오면 제한시간 안에 답을 적어주세요.\n정답 공개 전까지 답판을 들지 말아주세요.\n진행 상황에 따라 패자부활전을 1~2회 진행합니다.\n등수결정전은 정답자에게 답판을 든 순서대로 100점, 90점, 80점…을 부여합니다.\n판정이 애매한 경우 진행자의 안내를 따라주세요.',
       break: '잠시 쉬어갑니다',
       ending: '도전해 주신 여러분, 고맙습니다',
     },
@@ -538,12 +538,19 @@ function currentScreen(source = state) {
   return source?.customScreens.find(screen => item?.type === 'screen' && screen.id === item.screenId) || { title: item ? '구성 항목을 찾을 수 없습니다' : '행사 구성을 준비해주세요', subtitle: '', description: item ? '진행자가 다음 항목을 확인하고 있습니다.' : '', emphasis: '', style: 'plain' };
 }
 
-function sequenceItemLabel(item) {
+function questionNumberLabel(position) {
+  return `${String(Math.max(1, Number(position) || 1)).padStart(2, '0')}번`;
+}
+
+function sequenceItemLabel(item, position, sequence = state.sequence) {
   if (!item) return '마지막 항목입니다';
   if (item.type === 'screen' && item.screenId === 'technical') return technicalScreen.title;
   if (item.type === 'screen') return state.customScreens.find(screen => screen.id === item.screenId)?.title || item.screenId;
   const question = state.questions.find(question => question.id === item.questionId);
-  return question ? `${question.id} · ${question.title || question.question || '미입력 문제'}` : `누락된 문제 · ${item.questionId}`;
+  const title = Number.isInteger(position)
+    ? questionNumberLabel(sequence.slice(0, position + 1).filter(row => row.type === 'question').length)
+    : question?.title || question?.question || '미입력 문제';
+  return question ? `${question.id} · ${title}` : `누락된 문제 · ${item.questionId}`;
 }
 
 function getTimerRemaining(timer = state?.timer || publicState?.timer) {
@@ -567,7 +574,7 @@ function buildPublicState() {
     totalQuestions: questionProgress().total,
     screen: !mayShowQuestion ? publicScreen(currentScreen()) : null,
     question: mayShowQuestion && question ? {
-      title: question.title,
+      title: questionNumberLabel(questionProgress().current),
       question: projectionText(question.question, 600),
       category: question.category,
       seconds: question.seconds,
@@ -1201,7 +1208,7 @@ function slideDestination(index) {
   const item = state.sequence[index];
   if (!item) return '남은 슬라이드 없음';
   const question = item.type === 'question' && state.questions.find(q => q.id === item.questionId);
-  const title = question ? question.title || question.question || question.id : state.customScreens.find(s => s.id === item.screenId)?.title || '안내 화면';
+  const title = question ? questionNumberLabel(state.sequence.slice(0, index + 1).filter(row => row.type === 'question').length) : state.customScreens.find(s => s.id === item.screenId)?.title || '안내 화면';
   return `${index + 1}번 · ${title.length > 32 ? title.slice(0, 32) + '…' : title}`;
 }
 
@@ -1246,7 +1253,7 @@ function renderLive() {
   const nextAction = presentationNextAction();
   const resting = Boolean(state.runtime.break);
   return `<div class="live-layout"><section class="stack"><article class="card session-bar ${state.runtime.run.active ? 'is-live' : ''}"><div class="section-head"><strong>${state.runtime.run.active ? '진행 중' : '미리보기 · 연습'}</strong><button class="btn primary" data-action="${state.runtime.run.active ? 'finish-run' : 'start-run'}">${state.runtime.run.active ? '진행 종료' : '이 위치에서 진행 시작'}</button></div></article>
-    <article class="card stage-card"><div class="section-head stage-heading"><div><p class="eyebrow">프로젝터 미리보기 · ${position} / ${total}</p><h2>${esc(question ? question.title : currentScreen().title)}</h2><span class="stage-state">${question ? state.answerVisible ? '정답 공개 중' : '문제 화면' : '안내 화면'}</span></div><button class="btn sm" data-action="open-screen">새 창으로 열기</button></div>
+    <article class="card stage-card"><div class="section-head stage-heading"><div><p class="eyebrow">프로젝터 미리보기 · ${position} / ${total}</p><h2>${esc(question ? questionNumberLabel(questionProgress().current) : currentScreen().title)}</h2><span class="stage-state">${question ? state.answerVisible ? '정답 공개 중' : '문제 화면' : '안내 화면'}</span></div><button class="btn sm" data-action="open-screen">새 창으로 열기</button></div>
     <div class="stage-preview" aria-label="프로젝터 화면 미리보기">${renderPreview()}</div><p class="operator-hint">${resting ? '휴식 중입니다. 원래 위치로 돌아가려면 휴식 종료를 누르세요.' : operatorHint()}</p>
     ${resting ? '<button class="btn primary" data-action="resume-break">휴식 종료 · 원래 위치로</button>' : ''}
     ${question ? `<div class="primary-controls"><button class="btn timer-toggle" data-action="timer-toggle" ${state.answerVisible ? 'disabled' : ''}><span>${state.timer.running ? '타이머 일시정지' : '타이머 시작'}</span><kbd>Space</kbd></button><button class="btn presentation-next" data-action="toggle-answer" ${question.answer ? '' : 'disabled'}><span>${state.answerVisible ? '문제로 돌아가기' : '정답 공개'}</span><kbd>A</kbd></button></div>` : ''}
@@ -1254,7 +1261,7 @@ function renderLive() {
     ${question ? '<div class="row"><button class="btn sm ghost" data-action="reset-timer">시간 초기화 (R)</button><button class="btn sm ghost" data-action="edit-current">현재 문제 수정</button></div>' : ''}</article>
     <details class="card operator-guide"><summary>PPT 조작자를 위한 안내 · 단축키</summary><ol><li>프로젝터를 열고, 연습할 때는 슬라이드 모드를 그대로 사용하세요.</li><li>행사 시작 위치를 선택한 뒤 ‘진행 시작’을 누르세요.</li><li>문제 낭독 → 타이머 시작 → 정답 공개 → 판정 후 다음 순서입니다.</li><li>특별 라운드는 시작 안내에서 열립니다. ‘라운드 종료’를 누르면 안내와 문제 전체가 완료 처리됩니다.</li></ol><p><kbd>Space</kbd> 타이머　<kbd>A</kbd> 정답 / 문제　<kbd>←</kbd><kbd>→</kbd> 이동</p><p>완료한 화면도 직접 선택해 다시 볼 수 있습니다. 구성 변경·진행 종료 시 진행 기록만 초기화되며, 문제와 사진은 유지됩니다.</p><button class="btn sm" data-action="export">JSON 백업</button></details>
     </section><aside class="stack control-rail">${renderSlideSelector()}
-    <article class="card slide-jump"><h2>슬라이드 이동</h2><label for="slide-jump">행사 구성 순서</label><select id="slide-jump">${liveSequence.map((item, index) => `<option value="${index}" ${index === cursor ? 'selected' : ''}>${index + 1}. ${esc(sequenceItemLabel(item))}${state.runtime.run.active && state.runtime.run.completed.includes(index) ? ' · 완료' : ''}</option>`).join('')}</select><button class="btn" data-action="slide-jump" ${total && !resting ? '' : 'disabled'}>선택한 슬라이드로 이동</button></article>
+    <article class="card slide-jump"><h2>슬라이드 이동</h2><label for="slide-jump">행사 구성 순서</label><select id="slide-jump">${liveSequence.map((item, index) => `<option value="${index}" ${index === cursor ? 'selected' : ''}>${index + 1}. ${esc(sequenceItemLabel(item, index, liveSequence))}${state.runtime.run.active && state.runtime.run.completed.includes(index) ? ' · 완료' : ''}</option>`).join('')}</select><button class="btn" data-action="slide-jump" ${total && !resting ? '' : 'disabled'}>선택한 슬라이드로 이동</button></article>
     ${question ? `<article class="card timer-card"><div class="timer-status"><span data-timer-label>${remaining <= 0 ? '시간 종료' : '남은 시간'}</span><span>${question.timeLimit}초 문제</span></div><div class="timer ${timerClass(state.timer)}" data-timer-value>${formatTime(remaining)}</div><form id="manual-timer-form" class="manual-timer"><label for="manual-timer">시간 직접 설정(초)</label><input id="manual-timer" type="number" min="0" max="600" step="1" value="${Math.ceil(remaining)}"><button class="btn sm" type="submit">적용</button></form><div class="timer-track"><div data-timer-progress></div></div><div class="timer-adjust"><button class="btn sm" data-action="timer-minus">-5초</button><button class="btn sm" data-action="reset-timer">초기화</button><button class="btn sm" data-action="timer-plus">+5초</button></div></article>` : '<article class="card note-card"><strong>안내 화면 송출 중</strong><p>문제·정답·타이머는 표시하지 않습니다. 다음 항목으로 이동해 진행하세요.</p></article>'}
     </aside></div>`;
 }
@@ -1590,7 +1597,7 @@ function renderSequence() {
     const question = item.type === 'question' ? state.questions.find(q => q.id === item.questionId) : null;
     const missing = item.type === 'question' ? !question : !state.customScreens.some(screen => screen.id === item.screenId);
     const fixed = isOnlyRequiredRound(item, index);
-    return `<article draggable="true" data-drag-sequence="${index}" class="q-item sequence-item ${state.sequenceIndex === index ? 'current' : ''}"><div class="sequence-index"><span class="drag-handle" title="드래그해서 순서 이동" aria-hidden="true">⠿</span><span class="q-no">${index + 1}</span></div><div class="q-copy"><div class="item-labels">${itemBadge(item)}${state.sequenceIndex === index ? '<span class="current-label">현재</span>' : ''}</div><strong>${esc(sequenceItemLabel(item))}</strong><span>${question ? `${esc(roundLabels[question.round] || '미지정')} · ${usageLabels[question.usageStatus]}` : ''}${missing ? ' · 참조 누락: 수정 필요' : ''}</span></div><div class="q-actions"><button class="btn sm" data-sequence-edit="up" data-index="${index}" aria-label="항목 ${index + 1} 위로" ${index ? '' : 'disabled'}>↑</button><button class="btn sm" data-sequence-edit="down" data-index="${index}" aria-label="항목 ${index + 1} 아래로" ${index === state.sequence.length - 1 ? 'disabled' : ''}>↓</button><button class="btn sm" data-sequence-go="${index}">이동</button><button class="btn sm danger-ghost" data-sequence-edit="remove" data-index="${index}" title="${fixed ? '필수 라운드 · 순서 이동 가능' : '구성에서 빼기'}" aria-label="항목 ${index + 1} ${fixed ? '필수 라운드' : '구성에서 빼기'}" ${fixed ? 'disabled' : ''}>${fixed ? '고정' : '×'}</button></div></article>`;
+    return `<article draggable="true" data-drag-sequence="${index}" class="q-item sequence-item ${state.sequenceIndex === index ? 'current' : ''}"><div class="sequence-index"><span class="drag-handle" title="드래그해서 순서 이동" aria-hidden="true">⠿</span><span class="q-no">${index + 1}</span></div><div class="q-copy"><div class="item-labels">${itemBadge(item)}${state.sequenceIndex === index ? '<span class="current-label">현재</span>' : ''}</div><strong>${esc(sequenceItemLabel(item, index))}</strong><span>${question ? `${esc(roundLabels[question.round] || '미지정')} · ${usageLabels[question.usageStatus]}` : ''}${missing ? ' · 참조 누락: 수정 필요' : ''}</span></div><div class="q-actions"><button class="btn sm" data-sequence-edit="up" data-index="${index}" aria-label="항목 ${index + 1} 위로" ${index ? '' : 'disabled'}>↑</button><button class="btn sm" data-sequence-edit="down" data-index="${index}" aria-label="항목 ${index + 1} 아래로" ${index === state.sequence.length - 1 ? 'disabled' : ''}>↓</button><button class="btn sm" data-sequence-go="${index}">이동</button><button class="btn sm danger-ghost" data-sequence-edit="remove" data-index="${index}" title="${fixed ? '필수 라운드 · 순서 이동 가능' : '구성에서 빼기'}" aria-label="항목 ${index + 1} ${fixed ? '필수 라운드' : '구성에서 빼기'}" ${fixed ? 'disabled' : ''}>${fixed ? '고정' : '×'}</button></div></article>`;
   }).join('') || '<div class="empty-state"><p>구성이 비어 있습니다. 오른쪽에서 항목을 추가해주세요.</p></div>'}</div><p class="field-help sequence-help">⠿ 드래그로 이동 · ↑↓로 한 칸씩 이동</p></section>
     <aside class="stack sequence-sidebar"><article class="card"><h2>항목 추가</h2><div class="form-grid one-column"><div class="field"><label for="sequence-question">문제 선택</label><select id="sequence-question"><option value="">문제를 선택하세요</option>${state.questions.filter(q => q.usageStatus !== 'disabled').map(q => `<option value="${esc(q.id)}">${esc(`${q.id} · ${q.title || q.question || '미입력'} · ${usageLabels[q.usageStatus]}`)}</option>`).join('')}</select></div><button class="btn" data-action="sequence-add-question">+ 문제 추가</button><div class="field"><label for="sequence-screen">안내 화면 선택</label><select id="sequence-screen">${state.customScreens.map(screen => `<option value="${esc(screen.id)}">${esc(screen.title || screen.id)}</option>`).join('')}</select></div><button class="btn" data-action="sequence-add-screen">+ 화면 추가</button></div></article>
     <article class="card"><div class="section-head"><h2>안내 화면 편집</h2><button class="btn sm" data-action="add-screen">+ 새 화면</button></div><div class="screen-library">${state.customScreens.map(screen => `<button class="btn ghost" data-edit-screen="${esc(screen.id)}">${esc(screen.title || '(제목 없음)')}<small>편집</small></button>`).join('')}</div></article></aside></div>`;
@@ -1949,12 +1956,13 @@ function renderScreenMarkup(publicState) {
   }
   const category = categoryMeta[question.category] || categoryMeta.basic;
   const remaining = getTimerRemaining(publicState.timer);
+  const questionTitle = questionNumberLabel(Number(publicState.currentIndex) + 1);
   const image = safeImage(question.image);
   const questionLayout = image ? `has-image${questionDisplayLength(question.question) < 45 ? ' image-focus' : ''}` : '';
   if (publicState.answerVisible) {
-    return `<main class="screen-mode screen-question-mode answer-open"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title ?? '시그마 수학 골든벨')}</div><div class="screen-round"><span class="screen-category ${category.className}">${esc(category.label)}</span><strong>${Number(publicState.currentIndex) + 1}</strong><span>/ ${Number(publicState.totalQuestions) || 0}</span></div></header><section class="screen-question-wrap"><div class="screen-answer"><div class="screen-answer-body"><span class="answer-label">정답 공개</span><p class="answer-question-title">${esc(question.title || `문제 ${Number(publicState.currentIndex) + 1}`)}</p><strong class="${answerSizeClass(question.answer)}">${answerTextMarkup(question.answer || '정답 미입력')}</strong>${question.explanation ? `<div class="answer-explanation"><span>해설</span><p>${richText(question.explanation)}</p></div>` : ''}</div></div></section><footer class="screen-simple-footer"><span>${esc(messages.tagline ?? 'SIGMA GOLDEN BELL')}</span><span>SIGMA</span></footer></main>`;
+    return `<main class="screen-mode screen-question-mode answer-open"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title ?? '시그마 수학 골든벨')}</div><div class="screen-round"><span class="screen-category ${category.className}">${esc(category.label)}</span><strong>${Number(publicState.currentIndex) + 1}</strong><span>/ ${Number(publicState.totalQuestions) || 0}</span></div></header><section class="screen-question-wrap"><div class="screen-answer"><div class="screen-answer-body"><span class="answer-label">정답 공개</span><p class="answer-question-title">${esc(questionTitle)}</p><strong class="${answerSizeClass(question.answer)}">${answerTextMarkup(question.answer || '정답 미입력')}</strong>${question.explanation ? `<div class="answer-explanation"><span>해설</span><p>${richText(question.explanation)}</p></div>` : ''}</div></div></section><footer class="screen-simple-footer"><span>${esc(messages.tagline ?? 'SIGMA GOLDEN BELL')}</span><span>SIGMA</span></footer></main>`;
   }
-  return `<main class="screen-mode screen-question-mode ${publicState.answerVisible ? 'answer-open' : ''}"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title ?? '시그마 수학 골든벨')}</div><div class="screen-round"><span class="screen-category ${category.className}">${esc(category.label)}</span><strong>${Number(publicState.currentIndex) + 1}</strong><span>/ ${Number(publicState.totalQuestions) || 0}</span></div></header><section class="screen-question-wrap"><p class="screen-q-title">${esc(question.title || `문제 ${Number(publicState.currentIndex) + 1}`)}</p><div class="screen-question-content ${questionLayout}">${image ? `<img class="screen-question-image" src="${image}" alt="${esc(question.imageAlt || '문제 참고 이미지')}">` : ''}<h1 class="screen-question ${questionSizeClass(question.question)} ${questionMathClass(question.question)}">${questionTextMarkup(question.question || '문제를 준비 중입니다.')}</h1></div>${publicState.answerVisible ? `<div class="screen-answer"><div class="screen-answer-body"><span>정답</span><strong class="${answerSizeClass(question.answer)}">${answerTextMarkup(question.answer || '정답 미입력')}</strong>${question.explanation ? `<p>${richText(question.explanation)}</p>` : ''}</div></div>` : ''}</section><footer class="screen-footer"><div class="screen-timer-copy"><span data-timer-label>${remaining <= 0 ? '시간 종료' : '남은 시간'}</span><strong data-timer-value class="${timerClass(publicState.timer)}">${formatTime(remaining)}</strong></div><div class="screen-motto">${esc(messages.tagline ?? 'SIGMA GOLDEN BELL')}</div></footer><div class="screen-progress"><div data-timer-progress></div></div></main>`;
+  return `<main class="screen-mode screen-question-mode ${publicState.answerVisible ? 'answer-open' : ''}"><header class="screen-head"><div class="screen-brand"><span>Σ</span>${esc(event.title ?? '시그마 수학 골든벨')}</div><div class="screen-round"><span class="screen-category ${category.className}">${esc(category.label)}</span><strong>${Number(publicState.currentIndex) + 1}</strong><span>/ ${Number(publicState.totalQuestions) || 0}</span></div></header><section class="screen-question-wrap"><p class="screen-q-title">${esc(questionTitle)}</p><div class="screen-question-content ${questionLayout}">${image ? `<img class="screen-question-image" src="${image}" alt="${esc(question.imageAlt || '문제 참고 이미지')}">` : ''}<h1 class="screen-question ${questionSizeClass(question.question)} ${questionMathClass(question.question)}">${questionTextMarkup(question.question || '문제를 준비 중입니다.')}</h1></div>${publicState.answerVisible ? `<div class="screen-answer"><div class="screen-answer-body"><span>정답</span><strong class="${answerSizeClass(question.answer)}">${answerTextMarkup(question.answer || '정답 미입력')}</strong>${question.explanation ? `<p>${richText(question.explanation)}</p>` : ''}</div></div>` : ''}</section><footer class="screen-footer"><div class="screen-timer-copy"><span data-timer-label>${remaining <= 0 ? '시간 종료' : '남은 시간'}</span><strong data-timer-value class="${timerClass(publicState.timer)}">${formatTime(remaining)}</strong></div><div class="screen-motto">${esc(messages.tagline ?? 'SIGMA GOLDEN BELL')}</div></footer><div class="screen-progress"><div data-timer-progress></div></div></main>`;
 }
 
 function renderScreen() {
