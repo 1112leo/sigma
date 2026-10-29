@@ -9,15 +9,15 @@ test('slide mode never skips; started session skips completed intro and question
  h.run('goSequence(0);startRun();setManualTimer(17);startSpecialRound(1);advancePresentation();toggleAnswer();advancePresentation();');
  assert.equal(h.run('state.sequenceIndex'),0);
  assert.equal(h.run('state.timer.remaining'),17);
- assert.deepEqual(h.json('state.runtime.run.completed').sort(),[1,2]);
+ assert.deepEqual(h.json('state.runtime.run.completed').sort(),[1,2,3]);
  h.run('toggleAnswer();advancePresentation();');
- assert.equal(h.run('state.sequenceIndex'),3);
+ assert.equal(h.run('state.sequenceIndex'),4);
  h.run('goSequence(1);');assert.equal(h.run('state.sequenceIndex'),1);
  h.run('finishRun();goSequence(0);advancePresentation();');assert.equal(h.run('state.sequenceIndex'),1);
 });
 test('answered main is not displayed again on round completion and session survives reload',()=>{
  const h=fixture();h.run('startRun();toggleAnswer();startSpecialRound(1);saveState();state=loadPrivateState();finishSpecialRound();');
- assert.equal(h.run('state.sequenceIndex'),3);
+ assert.equal(h.run('state.sequenceIndex'),4);
  assert.equal(h.run('state.runtime.run.active'),true);
  assert.ok(h.run('state.runtime.run.completed.includes(1)'));
 });

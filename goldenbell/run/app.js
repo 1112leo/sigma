@@ -1228,7 +1228,7 @@ function slideDestination(index) {
 function roundFinishDestination() {
   const start = state.runtime.run.specialStart;
   if (start === null) return state.sequence.length;
-  const end = specialRangeEnd(start);
+  const end = specialCompletionEnd(start);
   const saved = state.runtime.mainResume;
   let target = saved && state.sequence[saved.index]?.questionId === saved.questionId ? saved.index : end;
   while (target < state.sequence.length && (state.runtime.run.completed.includes(target) || (target >= start && target < end))) target++;
@@ -1361,9 +1361,15 @@ function specialRangeEnd(start) {
   const id = state.sequence[start]?.screenId;
   const round = { 'revival1-start': 'revival1', 'revival2-start': 'revival2', 'final-start': 'final' }[id];
   if (!round) return start + 1;
+  const boundaries = ['revival1-start', 'revival2-start', 'final-start', 'main-resume', 'main3-start', 'end', 'result', 'awards', 'opening', 'waiting', 'rules'];
+  if (round !== 'final') {
+    const end = state.sequence.findIndex((item, index) => index > start && item.type === 'screen' && boundaries.includes(item.screenId));
+    // An explicit return slide groups the revival and its ordinary follow-up together.
+    if (state.sequence[end]?.screenId === 'main-resume') return end;
+  }
   for (let index = start + 1; index < state.sequence.length; index++) {
     const item = state.sequence[index];
-    if (item.type === 'screen' && ['revival1-start', 'revival2-start', 'final-start', 'main-resume', 'main3-start', 'end', 'result', 'awards', 'opening', 'waiting', 'rules'].includes(item.screenId)) return index;
+    if (item.type === 'screen' && boundaries.includes(item.screenId)) return index;
     if (item.type === 'question') {
       const q = state.questions.find(q => q.id === item.questionId);
       if (!q || (q.round !== round && questionNavigationGroup(q) !== (round === 'final' ? 'final' : 'revival'))) return index;
@@ -1371,6 +1377,12 @@ function specialRangeEnd(start) {
     }
   }
   return state.sequence.length;
+}
+
+function specialCompletionEnd(start) {
+  const end = specialRangeEnd(start);
+  const revival = ['revival1-start', 'revival2-start'].includes(state.sequence[start]?.screenId);
+  return revival && state.sequence[end]?.screenId === 'main-resume' ? end + 1 : end;
 }
 
 function specialStartAt(position) {
@@ -1386,7 +1398,7 @@ function finishSpecialRound() {
   if (state.runtime.break) return;
   const start = state.runtime.run.specialStart;
   if (!state.runtime.run.active || start === null || !mayNavigate()) return;
-  const end = specialRangeEnd(start), target = roundFinishDestination();
+  const end = specialCompletionEnd(start), target = roundFinishDestination();
   update(next => {
     next.runtime.run.completed = [...new Set([...next.runtime.run.completed, ...Array.from({ length: end - start }, (_, offset) => start + offset)])];
     const saved = next.runtime.mainResume;
