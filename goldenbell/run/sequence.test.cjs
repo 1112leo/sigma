@@ -135,7 +135,8 @@ test('physical A reveals with Korean layout and button focus, but never while ed
 test('live surface exposes modes and configured navigation without temporary operations', () => {
   const h=fixture();
   const html=h.run('renderLive()');
-  for(const group of ['basic','hard']) assert.match(html, new RegExp(`data-group-mode="${group}"`));
+  assert.match(html, /data-group-mode="basic"[^>]*>본선 문제<\/button>/);
+  assert.doesNotMatch(html, /data-group-mode="hard"/);
   assert.doesNotMatch(html, /runtime-return|runtime-clear|reserve-picker|data-immediate-screen/);
   assert.match(html, /id="slide-jump"/);
   assert.doesNotMatch(html, /overview-card|shortcut-card/);

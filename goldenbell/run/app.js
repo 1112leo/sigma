@@ -1279,7 +1279,7 @@ function renderLive() {
     </aside></div>`;
 }
 
-const navigationGroups = { basic: '일반 문제', hard: '고난도 문제', revival: '패자부활전', final: '등수결정전' };
+const navigationGroups = { basic: '본선 문제', hard: '고난도 문제', revival: '패자부활전', final: '등수결정전' };
 
 function questionNavigationGroup(question) {
   if (question.round === 'final' || question.category === 'tiebreak') return 'final';
@@ -1318,7 +1318,7 @@ function renderRunSettings() {
 function renderSlideSelector() {
   const active = activeItem(state);
   const question = currentQuestion();
-  return `<article class="card mode-card"><h2>모드 변경</h2><div class="mode-grid">${Object.entries(navigationGroups).filter(([group]) => ['basic', 'hard'].includes(group)).map(([group, label]) => {
+  return `<article class="card mode-card"><h2>모드 변경</h2><div class="mode-grid main-mode">${Object.entries(navigationGroups).filter(([group]) => group === 'basic').map(([group, label]) => {
     const selected = question && questionNavigationGroup(question) === group;
     return `<button class="mode-button ${selected ? 'active' : ''}" data-group-mode="${group}" aria-pressed="${Boolean(selected)}" ${navigationItems(group).length ? '' : 'disabled'}>${label}</button>`;
   }).join('')}</div><div class="mode-grid screen-modes">${specialRoundEntries().map(({ index, label }) => {

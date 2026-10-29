@@ -318,6 +318,7 @@ button:disabled { cursor: not-allowed; }
 .control-rail > .timer-card { order: -1; }
 .control-rail > .mode-card { order: -3; }
 .mode-card > .mode-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.mode-card > .main-mode { grid-template-columns: minmax(0, 1fr); }
 .mode-card > .screen-modes { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
 .slide-jump { display: grid; gap: 10px; order: -2; }
 .slide-jump select { width: 100%; min-width: 0; }
