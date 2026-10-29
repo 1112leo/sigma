@@ -542,13 +542,27 @@ function questionNumberLabel(position) {
   return `${String(Math.max(1, Number(position) || 1)).padStart(2, '0')}번`;
 }
 
+function sequenceQuestionProgress(position, sequence = effectiveSequence(state)) {
+  let scope = 'main';
+  const rows = sequence.map((item, index) => {
+    if (item.type === 'screen') {
+      if (['revival1-start', 'revival2-start'].includes(item.screenId)) scope = `revival:${index}`;
+      else if (['main-resume', 'main3-start', 'final-start', 'end', 'result', 'awards', 'opening', 'waiting', 'rules'].includes(item.screenId)) scope = 'main';
+    }
+    return { index, scope, question: item.type === 'question' };
+  });
+  const currentScope = rows[position]?.scope || 'main';
+  const questions = rows.filter(row => row.question && row.scope === currentScope);
+  return { current: questions.filter(row => row.index <= position).length, total: questions.length, revival: currentScope !== 'main' };
+}
+
 function sequenceItemLabel(item, position, sequence = state.sequence) {
   if (!item) return '마지막 항목입니다';
   if (item.type === 'screen' && item.screenId === 'technical') return technicalScreen.title;
   if (item.type === 'screen') return state.customScreens.find(screen => screen.id === item.screenId)?.title || item.screenId;
   const question = state.questions.find(question => question.id === item.questionId);
   const title = Number.isInteger(position)
-    ? questionNumberLabel(sequence.slice(0, position + 1).filter(row => row.type === 'question').length)
+    ? questionNumberLabel(sequenceQuestionProgress(position, sequence).current)
     : question?.title || question?.question || '미입력 문제';
   return question ? `${question.id} · ${title}` : `누락된 문제 · ${item.questionId}`;
 }
@@ -562,6 +576,7 @@ function getTimerRemaining(timer = state?.timer || publicState?.timer) {
 
 function buildPublicState() {
   const question = currentQuestion();
+  const progress = questionProgress();
   const mayShowQuestion = state.displayMode === 'question';
   const mayShowAnswer = mayShowQuestion && state.answerVisible;
   return {
@@ -570,13 +585,13 @@ function buildPublicState() {
     event: { title: state.event.title, date: state.event.date, place: state.event.place },
     messages: { tagline: state.messages.tagline },
     displayMode: state.displayMode,
-    currentIndex: questionProgress().current - 1,
-    totalQuestions: questionProgress().total,
+    currentIndex: progress.current - 1,
+    totalQuestions: progress.total,
     screen: !mayShowQuestion ? publicScreen(currentScreen()) : null,
     question: mayShowQuestion && question ? {
-      title: questionNumberLabel(questionProgress().current),
+      title: questionNumberLabel(progress.current),
       question: projectionText(question.question, 600),
-      category: question.category,
+      category: progress.revival ? 'revival' : question.category,
       seconds: question.seconds,
       answer: mayShowAnswer ? projectionText(question.answer, 200) : '',
       explanation: mayShowAnswer ? projectionText(question.explanation, 400) : '',
@@ -591,10 +606,8 @@ function buildPublicState() {
 }
 
 function questionProgress() {
-  const sequence = effectiveSequence(state);
-  const total = sequence.filter(item => item.type === 'question').length;
-  const current = sequence.slice(0, runtimePosition(state) + 1).filter(item => item.type === 'question').length;
-  return { current: currentQuestion() ? Math.max(1, current) : current, total: currentQuestion() ? Math.max(1, total) : total };
+  const progress = sequenceQuestionProgress(runtimePosition(state));
+  return { ...progress, current: currentQuestion() ? Math.max(1, progress.current) : progress.current, total: currentQuestion() ? Math.max(1, progress.total) : progress.total };
 }
 
 function publicScreen(screen) {
@@ -1208,7 +1221,7 @@ function slideDestination(index) {
   const item = state.sequence[index];
   if (!item) return '남은 슬라이드 없음';
   const question = item.type === 'question' && state.questions.find(q => q.id === item.questionId);
-  const title = question ? questionNumberLabel(state.sequence.slice(0, index + 1).filter(row => row.type === 'question').length) : state.customScreens.find(s => s.id === item.screenId)?.title || '안내 화면';
+  const title = question ? questionNumberLabel(sequenceQuestionProgress(index, state.sequence).current) : state.customScreens.find(s => s.id === item.screenId)?.title || '안내 화면';
   return `${index + 1}번 · ${title.length > 32 ? title.slice(0, 32) + '…' : title}`;
 }
 
