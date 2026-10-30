@@ -1,4 +1,4 @@
-import { defaultRuntime, validClockTime, validEventDate, normalizeRuntime, effectiveSequence, runtimePosition, activeItem, runtimeLog, roundProgress, eventClock } from './runtime.js?v=20260926-break1';
+import { defaultRuntime, validClockTime, validEventDate, normalizeRuntime, effectiveSequence, runtimePosition, activeItem, runtimeLog, roundProgress, eventClock } from './runtime.js?v=20261030-main-followup';
 import { mathParts, renderMath, richText, mathProjection } from './math.js?v=20260831-preparation5';
 import { parseQuestionImport, prepareQuestionImport, questionImportRows, assertFullBackup } from './preparation.js?v=20261026-import-kind';
 
@@ -211,6 +211,7 @@ function normalizePresentation(raw, next) {
     throw new Error('invalid-sequence-item');
   }) : buildAutoSequence(next.questions);
   const originalSequence = next.sequence.slice();
+  normalizeRevivalSequence(next.sequence, next.questions);
   ensureRequiredRoundScreens(next.sequence, next.questions);
   const restoredPosition = index => originalSequence[index] ? next.sequence.indexOf(originalSequence[index]) : 0;
   if (raw.sequence === undefined) {
@@ -231,6 +232,7 @@ function normalizePresentation(raw, next) {
   next.runtime = normalizeRuntime(raw.runtime, originalSequence.length);
   if (next.runtime.break) next.runtime.break.sequenceIndex = restoredPosition(next.runtime.break.sequenceIndex);
   if (next.runtime.mainResume) next.runtime.mainResume.index = restoredPosition(next.runtime.mainResume.index);
+  if (next.runtime.mainResume?.followupIndex !== undefined) next.runtime.mainResume.followupIndex = restoredPosition(next.runtime.mainResume.followupIndex);
   if (next.runtime.run.active && next.runtime.run.signature !== JSON.stringify(next.sequence)) { next.runtime.run = defaultRuntime().run; next.runtime.mainResume = null; }
   if (next.runtime.break) next.sequenceIndex = next.runtime.break.sequenceIndex;
   // Retire old interventions without changing the user's configured slides or questions.
@@ -258,6 +260,18 @@ function normalizePresentation(raw, next) {
     next.timer = { remaining: 0, running: false, endAt: null };
   }
   return next;
+}
+
+function normalizeRevivalSequence(sequence, questions) {
+  for (let index = 0; index + 3 < sequence.length; index++) {
+    if (!['revival1-start', 'revival2-start'].includes(sequence[index].screenId)) continue;
+    const revival = sequence[index + 1], followup = sequence[index + 2], resume = sequence[index + 3];
+    if (revival.type !== 'question' || followup.type !== 'question' || resume.screenId !== 'main-resume') continue;
+    const first = questions.find(q => q.id === revival.questionId);
+    const second = questions.find(q => q.id === followup.questionId);
+    if (!first || !second || questionNavigationGroup(first) !== 'revival' || !['basic', 'hard'].includes(questionNavigationGroup(second))) continue;
+    sequence.splice(index + 2, 2, resume, followup);
+  }
 }
 
 function safeText(value, maxLength = 5000) {
@@ -1228,7 +1242,9 @@ function slideDestination(index) {
 function roundFinishDestination() {
   const start = state.runtime.run.specialStart;
   if (start === null) return state.sequence.length;
-  const end = specialCompletionEnd(start);
+  const followup = revivalFollowup(start);
+  if (followup !== null) return followup - 1;
+  const end = specialRangeEnd(start);
   const saved = state.runtime.mainResume;
   let target = saved && state.sequence[saved.index]?.questionId === saved.questionId ? saved.index : end;
   while (target < state.sequence.length && (state.runtime.run.completed.includes(target) || (target >= start && target < end))) target++;
@@ -1238,6 +1254,10 @@ function roundFinishDestination() {
 function presentationNextAction() {
   if (state.runtime.break) return { kind: 'break', target: state.sequenceIndex, label: '휴식 종료 · 원래 위치로' };
   if (!state.sequence.length) return { kind: 'none', target: -1, label: '행사 구성을 먼저 추가하세요' };
+  if (state.runtime.run.active && state.runtime.mainResume?.followupIndex === state.sequenceIndex) {
+    const target = mainReturnDestination(state.runtime.mainResume);
+    return { kind: 'main-return', target, label: target < state.sequence.length ? `다음: ${slideDestination(target)}` : '본선 종료' };
+  }
   const start = state.runtime.run.specialStart;
   if (state.runtime.run.active && start !== null && nextUncompleted(state.sequenceIndex + 1) >= specialRangeEnd(start)) {
     const target = roundFinishDestination();
@@ -1334,6 +1354,7 @@ function renderSlideSelector() {
 
 function renderRoundExit() {
   if (state.runtime.break) return '';
+  if (state.runtime.mainResume?.followupIndex !== undefined) return '';
   const active = state.runtime.run.active && state.runtime.run.specialStart !== null;
   const target = active ? roundFinishDestination() : state.runtime.mainResume?.index;
   if (!active && target === undefined) return '';
@@ -1362,11 +1383,6 @@ function specialRangeEnd(start) {
   const round = { 'revival1-start': 'revival1', 'revival2-start': 'revival2', 'final-start': 'final' }[id];
   if (!round) return start + 1;
   const boundaries = ['revival1-start', 'revival2-start', 'final-start', 'main-resume', 'main3-start', 'end', 'result', 'awards', 'opening', 'waiting', 'rules'];
-  if (round !== 'final') {
-    const end = state.sequence.findIndex((item, index) => index > start && item.type === 'screen' && boundaries.includes(item.screenId));
-    // An explicit return slide groups the revival and its ordinary follow-up together.
-    if (state.sequence[end]?.screenId === 'main-resume') return end;
-  }
   for (let index = start + 1; index < state.sequence.length; index++) {
     const item = state.sequence[index];
     if (item.type === 'screen' && boundaries.includes(item.screenId)) return index;
@@ -1379,10 +1395,41 @@ function specialRangeEnd(start) {
   return state.sequence.length;
 }
 
-function specialCompletionEnd(start) {
+function revivalFollowup(start) {
   const end = specialRangeEnd(start);
   const revival = ['revival1-start', 'revival2-start'].includes(state.sequence[start]?.screenId);
-  return revival && state.sequence[end]?.screenId === 'main-resume' ? end + 1 : end;
+  return revival && state.sequence[end]?.screenId === 'main-resume' && state.sequence[end + 1]?.type === 'question' ? end + 1 : null;
+}
+
+function specialCompletionEnd(start) {
+  const followup = revivalFollowup(start);
+  if (followup !== null) return followup + 1;
+  const end = specialRangeEnd(start);
+  return ['revival1-start', 'revival2-start'].includes(state.sequence[start]?.screenId) && state.sequence[end]?.screenId === 'main-resume' ? end + 1 : end;
+}
+
+function mainReturnDestination(saved) {
+  const unit = sequenceUnits().find(row => row.group && row.start <= saved.followupIndex && saved.followupIndex < row.end);
+  let target = saved.index;
+  while (target < state.sequence.length && (state.runtime.run.completed.includes(target) || (unit && target >= unit.start && target < unit.end))) target++;
+  return target;
+}
+
+function finishRevivalFollowup() {
+  const saved = state.runtime.mainResume;
+  if (!saved || saved.followupIndex !== state.sequenceIndex || !mayNavigate()) return;
+  const target = mainReturnDestination(saved);
+  const unit = sequenceUnits().find(row => row.group && row.start <= saved.followupIndex && saved.followupIndex < row.end);
+  update(next => {
+    if (unit) next.runtime.run.completed = [...new Set([...next.runtime.run.completed, ...Array.from({ length: unit.end - unit.start }, (_, offset) => unit.start + offset)])];
+    next.runtime.mainResume = null;
+    if (target < next.sequence.length) {
+      activateSequence(next, target);
+      if (target === saved.index) next.timer.remaining = saved.remaining;
+      next.runtime.run.specialStart = specialStartAt(target);
+      runtimeLog(next, 'sequence-move', `${target + 1}번 항목으로 이동`);
+    } else stopTimerIn(next);
+  });
 }
 
 function specialStartAt(position) {
@@ -1398,11 +1445,13 @@ function finishSpecialRound() {
   if (state.runtime.break) return;
   const start = state.runtime.run.specialStart;
   if (!state.runtime.run.active || start === null || !mayNavigate()) return;
-  const end = specialCompletionEnd(start), target = roundFinishDestination();
+  const end = specialRangeEnd(start), target = roundFinishDestination();
+  const followup = revivalFollowup(start);
   update(next => {
-    next.runtime.run.completed = [...new Set([...next.runtime.run.completed, ...Array.from({ length: end - start }, (_, offset) => start + offset)])];
+    const completedEnd = followup === null ? end : end + 1;
+    next.runtime.run.completed = [...new Set([...next.runtime.run.completed, ...Array.from({ length: completedEnd - start }, (_, offset) => start + offset)])];
     const saved = next.runtime.mainResume;
-    next.runtime.mainResume = null;
+    next.runtime.mainResume = saved && followup !== null ? { ...saved, followupIndex: followup } : null;
     next.runtime.run.specialStart = null;
     if (target < next.sequence.length) {
       activateSequence(next, target);
@@ -1423,7 +1472,7 @@ function startSpecialRound(index) {
   if (!specialRoundEntries().some(row => row.index === index) || !mayNavigate()) return;
   update(next => {
     const q = currentQuestion();
-    if (q && ['basic', 'hard'].includes(questionNavigationGroup(q))) next.runtime.mainResume = { index: next.sequenceIndex, questionId: q.id, remaining: getTimerRemaining(next.timer) };
+    if (q && ['basic', 'hard'].includes(questionNavigationGroup(q)) && next.runtime.mainResume?.followupIndex === undefined) next.runtime.mainResume = { index: next.sequenceIndex, questionId: q.id, remaining: getTimerRemaining(next.timer) };
     activateSequence(next, index);
     if (next.runtime.run.active) next.runtime.run.specialStart = index;
     runtimeLog(next, 'sequence-move', `${index + 1}번 항목으로 이동`);
@@ -1434,6 +1483,7 @@ function resumeMain() {
   if (state.runtime.break) return;
   if (state.runtime.run.active && state.runtime.run.specialStart !== null) return finishSpecialRound();
   const saved = state.runtime.mainResume;
+  if (saved?.followupIndex !== undefined) return state.sequenceIndex === saved.followupIndex ? finishRevivalFollowup() : goSequence(saved.followupIndex);
   if (!saved || state.sequence[saved.index]?.questionId !== saved.questionId || !mayNavigate()) return;
   update(next => {
     activateSequence(next, saved.index);
@@ -1648,7 +1698,7 @@ function renderSequence() {
       const steps = state.sequence.slice(index, end).map((step, offset) => {
         const position = index + offset;
         const question = step.type === 'question' && state.questions.find(q => q.id === step.questionId);
-        const role = step.type === 'screen' ? step.screenId === 'main-resume' ? '본게임 재개' : '안내' : offset === 1 ? '패자 문제' : '후속 문제';
+        const role = step.type === 'screen' ? step.screenId === 'main-resume' ? '본게임 재개' : '안내' : offset === 1 ? '패자 문제' : '본선 문제';
         const original = question && (/^[0-9]+번$/.test(question.title) ? `원본 ${question.title}` : question.title || question.id);
         const copy = question ? `${questionNumberLabel(sequenceQuestionProgress(position, state.sequence).current)} · ${original}` : sequenceItemLabel(step, position);
         return `<li class="sequence-group-item ${state.sequenceIndex === position ? 'current' : ''}"><span class="sequence-group-step">${position + 1} · ${role}</span><span class="sequence-group-copy">${esc(copy)}</span><button class="btn sm" data-sequence-go="${position}">이동</button></li>`;
@@ -2285,6 +2335,7 @@ function setScreenMode(mode) {
 function advancePresentation() {
   if (state.runtime.break) return resumeBreak();
   const action = presentationNextAction();
+  if (action.kind === 'main-return') return finishRevivalFollowup();
   if (action.kind === 'round') return finishSpecialRound();
   if (action.kind === 'end') return finishRun();
   if (action.kind === 'move') return goRuntimePosition(action.target);

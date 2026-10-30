@@ -15,6 +15,7 @@ function normalizeRuntime(candidate, sequenceLength) {
   const base = defaultRuntime();
   if (raw.run?.active === true) base.run = { active: true, completed: Array.isArray(raw.run.completed) ? [...new Set(raw.run.completed.filter(index => Number.isInteger(index) && index >= 0 && index < sequenceLength))] : [], specialStart: Number.isInteger(raw.run.specialStart) && raw.run.specialStart >= 0 && raw.run.specialStart < sequenceLength ? raw.run.specialStart : null, signature: typeof raw.run.signature === 'string' ? raw.run.signature : '' };
   if (Number.isInteger(raw.mainResume?.index) && raw.mainResume.index >= 0 && raw.mainResume.index < sequenceLength) base.mainResume = { index: raw.mainResume.index, questionId: String(raw.mainResume.questionId || ''), remaining: Math.max(0, Math.min(600, Number(raw.mainResume.remaining) || 0)) };
+  if (base.mainResume && Number.isInteger(raw.mainResume.followupIndex) && raw.mainResume.followupIndex >= 0 && raw.mainResume.followupIndex < sequenceLength) base.mainResume.followupIndex = raw.mainResume.followupIndex;
   if (raw.break?.active === true && Number.isInteger(raw.break.sequenceIndex) && raw.break.sequenceIndex >= 0 && raw.break.sequenceIndex < sequenceLength) {
     base.break = { active: true, sequenceIndex: raw.break.sequenceIndex, remaining: Math.max(0, Math.min(600, Number(raw.break.remaining) || 0)), answerVisible: raw.break.answerVisible === true };
   }
