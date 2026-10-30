@@ -25,8 +25,8 @@ test('sequence tab renders a single draggable unit for revival intro, both quest
   const html=h.run('renderSequence()');
   assert.equal((html.match(/draggable="true"/g)||[]).length,4);
   assert.match(html,/sequence-item sequence-group current/);
-  assert.match(html,/원본 42번/);
-  assert.match(html,/원본 09번/);
+  assert.match(html,/title="V1 · 42번"/);
+  assert.match(html,/title="F9 · 09번"/);
   assert.match(html,/본선 문제/);
   assert.match(html,/본게임 재개/);
   assert.doesNotMatch(html,/data-drag-sequence="[234]"/);
@@ -57,4 +57,22 @@ test('old paired layouts move main resume before the ordinary question without l
   assert.equal(h.run('state.sequenceIndex'),4);
   assert.equal(h.run('buildPublicState().question.category'),'basic');
   assert.deepEqual(h.json('state.questions'),original);
+});
+
+test('live revival selection inserts the existing unit after the current main question and renumbers the follow-up', () => {
+  const h=fixture();
+  h.run('const block=state.sequence.splice(1,4);state.sequence.splice(2,0,...block);activateSequence(state,0);startRun();toggleAnswer();startSpecialRound(2)');
+  assert.deepEqual(h.json('state.sequence.slice(0,6).map(item=>item.questionId||item.screenId)'),['M3','revival1-start','V1','main-resume','F9','M40']);
+  assert.equal(h.run('state.runtime.run.active'),true);
+  assert.ok(h.run('state.runtime.run.completed.includes(0)'));
+  h.run('advancePresentation();toggleAnswer();advancePresentation();advancePresentation()');
+  assert.equal(h.run('currentQuestion().id'),'F9');
+  assert.equal(h.run('buildPublicState().question.title'),'02번');
+  assert.equal(h.run('buildPublicState().question.category'),'basic');
+  assert.equal(h.run('state.questions.find(q=>q.id==="F9").title'),'09번');
+  h.run('saveState();state=loadPrivateState();toggleAnswer();advancePresentation()');
+  assert.equal(h.run('currentQuestion().id'),'M40');
+  assert.equal(h.run('buildPublicState().question.title'),'03번');
+  assert.equal(h.run('state.runtime.run.active'),true);
+  assert.equal(h.run('state.sequence.filter(item=>item.questionId==="F9").length'),1);
 });

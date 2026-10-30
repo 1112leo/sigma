@@ -733,7 +733,7 @@ window.addEventListener('storage', event => {
 function update(mutator, options = {}) {
   const previous = structuredClone(state);
   mutator(state);
-  if (previous.runtime.run.active && JSON.stringify(previous.sequence) !== JSON.stringify(state.sequence)) {
+  if (previous.runtime.run.active && JSON.stringify(previous.sequence) !== JSON.stringify(state.sequence) && !options.liveSequenceMove) {
     if (!confirm('구성을 변경하면 행사 진행이 종료되고 진행 기록만 초기화됩니다. 문제·사진은 삭제되지 않습니다. 변경할까요?')) { state = previous; render(); return false; }
     state.runtime.run = defaultRuntime().run;
     state.runtime.mainResume = null;
@@ -1470,6 +1470,28 @@ function specialRoundEntries() {
 function startSpecialRound(index) {
   if (state.runtime.break) return;
   if (!specialRoundEntries().some(row => row.index === index) || !mayNavigate()) return;
+  const unit = sequenceUnits().find(row => row.start === index && row.group);
+  const canInsert = state.runtime.run.active && unit && currentQuestion() && !questionProgress().revival
+    && !state.runtime.run.completed.includes(index) && (state.sequenceIndex < unit.start || state.sequenceIndex >= unit.end);
+  if (canInsert) {
+    return update(next => {
+      const previousItems = next.sequence.slice();
+      const current = previousItems[next.sequenceIndex];
+      const completed = next.runtime.run.completed.map(position => previousItems[position]).filter(Boolean);
+      const interrupted = !next.runtime.run.completed.includes(next.sequenceIndex);
+      const remaining = getTimerRemaining(next.timer);
+      const block = next.sequence.splice(unit.start, unit.end - unit.start);
+      const currentIndex = next.sequence.indexOf(current);
+      const insertion = currentIndex + 1;
+      next.sequence.splice(insertion, 0, ...block);
+      next.runtime.run.completed = completed.map(item => next.sequence.indexOf(item)).filter(position => position >= 0);
+      next.runtime.run.signature = JSON.stringify(next.sequence);
+      next.runtime.mainResume = interrupted ? { index: currentIndex, questionId: current.questionId, remaining } : null;
+      activateSequence(next, insertion);
+      next.runtime.run.specialStart = insertion;
+      runtimeLog(next, 'sequence-move', `${insertion + 1}번 항목에 패자부활전 배치`);
+    }, { liveSequenceMove: true });
+  }
   update(next => {
     const q = currentQuestion();
     if (q && ['basic', 'hard'].includes(questionNavigationGroup(q)) && next.runtime.mainResume?.followupIndex === undefined) next.runtime.mainResume = { index: next.sequenceIndex, questionId: q.id, remaining: getTimerRemaining(next.timer) };
@@ -1699,9 +1721,9 @@ function renderSequence() {
         const position = index + offset;
         const question = step.type === 'question' && state.questions.find(q => q.id === step.questionId);
         const role = step.type === 'screen' ? step.screenId === 'main-resume' ? '본게임 재개' : '안내' : offset === 1 ? '패자 문제' : '본선 문제';
-        const original = question && (/^[0-9]+번$/.test(question.title) ? `원본 ${question.title}` : question.title || question.id);
-        const copy = question ? `${questionNumberLabel(sequenceQuestionProgress(position, state.sequence).current)} · ${original}` : sequenceItemLabel(step, position);
-        return `<li class="sequence-group-item ${state.sequenceIndex === position ? 'current' : ''}"><span class="sequence-group-step">${position + 1} · ${role}</span><span class="sequence-group-copy">${esc(copy)}</span><button class="btn sm" data-sequence-go="${position}">이동</button></li>`;
+        const copy = question ? questionNumberLabel(sequenceQuestionProgress(position, state.sequence).current) : sequenceItemLabel(step, position);
+        const source = question ? `${question.id} · ${question.title}` : '';
+        return `<li class="sequence-group-item ${state.sequenceIndex === position ? 'current' : ''}"><span class="sequence-group-step">${position + 1} · ${role}</span><span class="sequence-group-copy" title="${esc(source)}">${esc(copy)}</span><button class="btn sm" data-sequence-go="${position}">이동</button></li>`;
       }).join('');
       return `<article draggable="true" data-drag-sequence="${index}" class="q-item sequence-item sequence-group ${current ? 'current' : ''}"><div class="sequence-index"><span class="drag-handle" title="묶음 전체 드래그" aria-hidden="true">⠿</span><span class="q-no">${index + 1}–${end}</span></div><div class="q-copy"><div class="item-labels"><span class="type-label type-revival">패자부활 묶음</span>${current ? '<span class="current-label">현재</span>' : ''}</div><strong>${esc(title)}</strong><ol class="sequence-group-items">${steps}</ol></div><div class="q-actions"><button class="btn sm" data-sequence-edit="up" data-index="${index}" aria-label="${esc(title)} 묶음 위로" ${unitIndex ? '' : 'disabled'}>↑</button><button class="btn sm" data-sequence-edit="down" data-index="${index}" aria-label="${esc(title)} 묶음 아래로" ${unitIndex === units.length - 1 ? 'disabled' : ''}>↓</button><button class="btn sm danger-ghost" data-sequence-edit="remove" data-index="${index}" ${fixed ? 'disabled' : ''}>${fixed ? '고정' : '×'}</button></div></article>`;
     }
