@@ -1488,10 +1488,27 @@ function itemBadge(item) {
   const label = itemLabel(item);
   return '<span class="type-label type-' + label.kind + '">' + label.text + '</span>';
 }
-// The boundary is measured before removing the dragged row.
-function sequenceDropIndex(from, hovered, after) {
-  const boundary = hovered + (after ? 1 : 0);
-  return boundary - (from < boundary ? 1 : 0);
+function sequenceUnits() {
+  const units = [];
+  for (let start = 0; start < state.sequence.length;) {
+    const item = state.sequence[start];
+    const revival = item.type === 'screen' && ['revival1-start', 'revival2-start'].includes(item.screenId);
+    const end = revival ? Math.max(start + 1, specialCompletionEnd(start)) : start + 1;
+    units.push({ start, end, group: revival && end > start + 1 });
+    start = end;
+  }
+  return units;
+}
+
+function moveSequenceUnit(from, to) {
+  const unit = sequenceUnits().find(row => row.start === from);
+  return moveSequence(from, to, unit ? unit.end - unit.start : 1);
+}
+
+// The boundary is measured before removing the complete dragged unit.
+function sequenceDropIndex(from, hovered, after, fromCount = 1, hoveredCount = 1) {
+  const boundary = hovered + (after ? hoveredCount : 0);
+  return boundary - (from < boundary ? fromCount : 0);
 }
 function bindSequenceDrag() {
   const list = document.querySelector('.sequence-list');
@@ -1550,7 +1567,10 @@ function bindSequenceDrag() {
     if (!row) return null;
     const box = row.getBoundingClientRect();
     const after = event.clientY >= box.top + box.height / 2;
-    return { row, after, target: sequenceDropIndex(draggedIndex, Number(row.dataset.dragSequence), after) };
+    const units = sequenceUnits();
+    const source = units.find(unit => unit.start === draggedIndex);
+    const hovered = units.find(unit => unit.start === Number(row.dataset.dragSequence));
+    return { row, after, target: sequenceDropIndex(draggedIndex, Number(row.dataset.dragSequence), after, source ? source.end - source.start : 1, hovered ? hovered.end - hovered.start : 1) };
   };
   // Handle dragging uses pointer capture, including touch; row dragging keeps native HTML support.
   list.querySelectorAll('.drag-handle').forEach(handle => {
@@ -1585,7 +1605,7 @@ function bindSequenceDrag() {
       const from = draggedIndex;
       const destination = from !== null && marked ? locate(event) : null;
       clear();
-      if (destination) moveSequence(from, destination.target);
+      if (destination) moveSequenceUnit(from, destination.target);
     });
     handle.addEventListener('pointercancel', clear);
     handle.addEventListener('lostpointercapture', () => { if (pointerDrag) clear(); });
@@ -1611,19 +1631,35 @@ function bindSequenceDrag() {
     event.preventDefault();
     const destination = locate(event), from = draggedIndex;
     clear();
-    if (destination) moveSequence(from, destination.target);
+    if (destination) moveSequenceUnit(from, destination.target);
   });
 }
 
 function renderSequence() {
-  return `<div class="content-layout sequence-layout"><section class="card content-card"><div class="section-head"><div><h2>행사 구성</h2><p class="sub">${state.sequence.length}개 항목 · 현재 위치 ${Math.max(0, state.sequenceIndex + 1)}</p></div><button class="btn" data-action="sequence-auto">사용 문제로 자동 구성</button></div>
+  const units = sequenceUnits();
+  return `<div class="content-layout sequence-layout"><section class="card content-card"><div class="section-head"><div><h2>행사 구성</h2><p class="sub">${units.length}개 구성 · ${state.sequence.length}장 · 현재 위치 ${Math.max(0, state.sequenceIndex + 1)}</p></div><button class="btn" data-action="sequence-auto">사용 문제로 자동 구성</button></div>
     <div class="sequence-legend"><span class="type-label type-guide">안내</span><span class="type-label type-basic">기본 문제 · 기본</span><span class="type-label type-hard">기본 문제 · 고난도</span><span class="type-label type-revival">패자부활</span><span class="type-label type-final">등수결정</span></div><div class="q-list sequence-list" aria-label="행사 순서">
-    ${state.sequence.map((item, index) => {
+    ${units.map(({ start: index, end, group }, unitIndex) => {
+    const item = state.sequence[index];
+    if (group) {
+      const current = state.sequenceIndex >= index && state.sequenceIndex < end;
+      const fixed = isOnlyRequiredRound(item, index);
+      const title = state.customScreens.find(screen => screen.id === item.screenId)?.title || '패자부활전';
+      const steps = state.sequence.slice(index, end).map((step, offset) => {
+        const position = index + offset;
+        const question = step.type === 'question' && state.questions.find(q => q.id === step.questionId);
+        const role = step.type === 'screen' ? step.screenId === 'main-resume' ? '본게임 재개' : '안내' : offset === 1 ? '패자 문제' : '후속 문제';
+        const original = question && (/^[0-9]+번$/.test(question.title) ? `원본 ${question.title}` : question.title || question.id);
+        const copy = question ? `${questionNumberLabel(sequenceQuestionProgress(position, state.sequence).current)} · ${original}` : sequenceItemLabel(step, position);
+        return `<li class="sequence-group-item ${state.sequenceIndex === position ? 'current' : ''}"><span class="sequence-group-step">${position + 1} · ${role}</span><span class="sequence-group-copy">${esc(copy)}</span><button class="btn sm" data-sequence-go="${position}">이동</button></li>`;
+      }).join('');
+      return `<article draggable="true" data-drag-sequence="${index}" class="q-item sequence-item sequence-group ${current ? 'current' : ''}"><div class="sequence-index"><span class="drag-handle" title="묶음 전체 드래그" aria-hidden="true">⠿</span><span class="q-no">${index + 1}–${end}</span></div><div class="q-copy"><div class="item-labels"><span class="type-label type-revival">패자부활 묶음</span>${current ? '<span class="current-label">현재</span>' : ''}</div><strong>${esc(title)}</strong><ol class="sequence-group-items">${steps}</ol></div><div class="q-actions"><button class="btn sm" data-sequence-edit="up" data-index="${index}" aria-label="${esc(title)} 묶음 위로" ${unitIndex ? '' : 'disabled'}>↑</button><button class="btn sm" data-sequence-edit="down" data-index="${index}" aria-label="${esc(title)} 묶음 아래로" ${unitIndex === units.length - 1 ? 'disabled' : ''}>↓</button><button class="btn sm danger-ghost" data-sequence-edit="remove" data-index="${index}" ${fixed ? 'disabled' : ''}>${fixed ? '고정' : '×'}</button></div></article>`;
+    }
     const question = item.type === 'question' ? state.questions.find(q => q.id === item.questionId) : null;
     const missing = item.type === 'question' ? !question : !state.customScreens.some(screen => screen.id === item.screenId);
     const fixed = isOnlyRequiredRound(item, index);
     return `<article draggable="true" data-drag-sequence="${index}" class="q-item sequence-item ${state.sequenceIndex === index ? 'current' : ''}"><div class="sequence-index"><span class="drag-handle" title="드래그해서 순서 이동" aria-hidden="true">⠿</span><span class="q-no">${index + 1}</span></div><div class="q-copy"><div class="item-labels">${itemBadge(item)}${state.sequenceIndex === index ? '<span class="current-label">현재</span>' : ''}</div><strong>${esc(sequenceItemLabel(item, index))}</strong><span>${question ? `${esc(roundLabels[question.round] || '미지정')} · ${usageLabels[question.usageStatus]}` : ''}${missing ? ' · 참조 누락: 수정 필요' : ''}</span></div><div class="q-actions"><button class="btn sm" data-sequence-edit="up" data-index="${index}" aria-label="항목 ${index + 1} 위로" ${index ? '' : 'disabled'}>↑</button><button class="btn sm" data-sequence-edit="down" data-index="${index}" aria-label="항목 ${index + 1} 아래로" ${index === state.sequence.length - 1 ? 'disabled' : ''}>↓</button><button class="btn sm" data-sequence-go="${index}">이동</button><button class="btn sm danger-ghost" data-sequence-edit="remove" data-index="${index}" title="${fixed ? '필수 라운드 · 순서 이동 가능' : '구성에서 빼기'}" aria-label="항목 ${index + 1} ${fixed ? '필수 라운드' : '구성에서 빼기'}" ${fixed ? 'disabled' : ''}>${fixed ? '고정' : '×'}</button></div></article>`;
-  }).join('') || '<div class="empty-state"><p>구성이 비어 있습니다. 오른쪽에서 항목을 추가해주세요.</p></div>'}</div><p class="field-help sequence-help">⠿ 드래그로 이동 · ↑↓로 한 칸씩 이동</p></section>
+  }).join('') || '<div class="empty-state"><p>구성이 비어 있습니다. 오른쪽에서 항목을 추가해주세요.</p></div>'}</div><p class="field-help sequence-help">⠿ 드래그 · ↑↓ 순서 이동</p></section>
     <aside class="stack sequence-sidebar"><article class="card"><h2>항목 추가</h2><div class="form-grid one-column"><div class="field"><label for="sequence-question">문제 선택</label><select id="sequence-question"><option value="">문제를 선택하세요</option>${state.questions.filter(q => q.usageStatus !== 'disabled').map(q => `<option value="${esc(q.id)}">${esc(`${q.id} · ${q.title || q.question || '미입력'} · ${usageLabels[q.usageStatus]}`)}</option>`).join('')}</select></div><button class="btn" data-action="sequence-add-question">+ 문제 추가</button><div class="field"><label for="sequence-screen">안내 화면 선택</label><select id="sequence-screen">${state.customScreens.map(screen => `<option value="${esc(screen.id)}">${esc(screen.title || screen.id)}</option>`).join('')}</select></div><button class="btn" data-action="sequence-add-screen">+ 화면 추가</button></div></article>
     <article class="card"><div class="section-head"><h2>안내 화면 편집</h2><button class="btn sm" data-action="add-screen">+ 새 화면</button></div><div class="screen-library">${state.customScreens.map(screen => `<button class="btn ghost" data-edit-screen="${esc(screen.id)}">${esc(screen.title || '(제목 없음)')}<small>편집</small></button>`).join('')}</div></article></aside></div>`;
 }
@@ -1690,19 +1726,28 @@ function appendSequence(type, id) {
   });
 }
 
-function moveSequence(from, to) {
-  if (!Number.isInteger(from) || !Number.isInteger(to) || from === to || !state.sequence[from] || !state.sequence[to] || !canEditSequence()) return;
+function moveSequence(from, to, count = 1) {
+  if (!Number.isInteger(from) || !Number.isInteger(to) || !Number.isInteger(count) || count < 1 || from < 0 || from + count > state.sequence.length || to < 0 || to > state.sequence.length - count || from === to || !canEditSequence()) return;
   update(next => {
     const current = next.sequence[next.sequenceIndex];
     const saved = next.runtime.mainResume && next.sequence[next.runtime.mainResume.index];
-    next.sequence.splice(to, 0, next.sequence.splice(from, 1)[0]);
+    next.sequence.splice(to, 0, ...next.sequence.splice(from, count));
     next.sequenceIndex = next.sequence.indexOf(current);
     if (saved) next.runtime.mainResume.index = next.sequence.indexOf(saved);
   });
 }
 
 function editSequence(index, action) {
-  if (action === 'up' || action === 'down') return moveSequence(index, index + (action === 'up' ? -1 : 1));
+  const units = sequenceUnits();
+  const unitIndex = units.findIndex(unit => unit.start === index);
+  const unit = units[unitIndex];
+  const count = unit ? unit.end - unit.start : 1;
+  if (action === 'up' || action === 'down') {
+    if (!unit) return moveSequence(index, index + (action === 'up' ? -1 : 1));
+    const neighbor = units[unitIndex + (action === 'up' ? -1 : 1)];
+    if (!neighbor) return;
+    return moveSequence(index, action === 'up' ? neighbor.start : neighbor.end - count, count);
+  }
   if (action === 'remove' && isOnlyRequiredRound(state.sequence[index], index)) return toast('라운드 시작 안내는 삭제할 수 없습니다. 순서는 옮길 수 있습니다.');
   if (!canEditSequence()) return;
   if (!state.sequence[index]) return;
@@ -1711,9 +1756,9 @@ function editSequence(index, action) {
   const active = state.sequence[state.sequenceIndex];
   update(next => {
     if (action === 'remove') {
-      next.sequence.splice(index, 1);
-      if (next.runtime.mainResume?.index === index) next.runtime.mainResume = null;
-      else if (next.runtime.mainResume?.index > index) next.runtime.mainResume.index--;
+      next.sequence.splice(index, count);
+      if (next.runtime.mainResume?.index >= index && next.runtime.mainResume.index < index + count) next.runtime.mainResume = null;
+      else if (next.runtime.mainResume?.index >= index + count) next.runtime.mainResume.index -= count;
     }
     else[next.sequence[index], next.sequence[target]] = [next.sequence[target], next.sequence[index]];
     const position = next.sequence.indexOf(active);
