@@ -25,6 +25,12 @@ function normalizeRuntime(candidate, sequenceLength) {
   if (raw.insertions?.length > 500 || raw.returns?.length > 20 || raw.logs?.length > 2000 || raw.reserveUses?.length > 2000 || raw.invalidQuestions?.length > 500) throw new Error('runtime-limit');
   const text = (value, limit = 200) => typeof value === 'string' ? value.slice(0, limit) : '';
   const item = value => value?.type === 'screen' && typeof value.screenId === 'string' ? { type: 'screen', screenId: value.screenId } : value?.type === 'question' && typeof value.questionId === 'string' ? { type: 'question', questionId: value.questionId } : null;
+  const baseline = raw.run?.baseline;
+  if (base.run.active && Array.isArray(baseline?.sequence) && baseline.sequence.length === sequenceLength && Array.isArray(baseline.order) && baseline.order.length === sequenceLength) {
+    const sequence = baseline.sequence.map(item);
+    const validOrder = new Set(baseline.order).size === sequenceLength && baseline.order.every(index => Number.isInteger(index) && index >= 0 && index < sequenceLength);
+    if (sequence.every(Boolean) && validOrder) base.run.baseline = { sequence, order: [...baseline.order] };
+  }
   base.insertions = (raw.insertions || []).map(row => {
     if (!row || typeof row.id !== 'string' || typeof row.questionId !== 'string' || !Number.isInteger(row.afterIndex) || row.afterIndex < -1 || row.afterIndex >= sequenceLength) throw new Error('invalid-runtime-insertion');
     return { id: row.id, questionId: row.questionId, afterIndex: row.afterIndex };

@@ -1,4 +1,4 @@
-import { defaultRuntime, validClockTime, validEventDate, normalizeRuntime, effectiveSequence, runtimePosition, activeItem, runtimeLog, roundProgress, eventClock } from './runtime.js?v=20261030-main-followup';
+import { defaultRuntime, validClockTime, validEventDate, normalizeRuntime, effectiveSequence, runtimePosition, activeItem, runtimeLog, roundProgress, eventClock } from './runtime.js?v=20261030-run-baseline';
 import { mathParts, renderMath, richText, mathProjection } from './math.js?v=20260831-preparation5';
 import { parseQuestionImport, prepareQuestionImport, questionImportRows, assertFullBackup } from './preparation.js?v=20261026-import-kind';
 
@@ -1367,15 +1367,32 @@ function startRun() {
   update(next => {
     stopTimerIn(next);
     next.runtime.mainResume = null;
-    next.runtime.run = { active: true, completed: [], specialStart: specialStartAt(next.sequenceIndex), signature: JSON.stringify(next.sequence) };
+    next.runtime.run = { active: true, completed: [], specialStart: specialStartAt(next.sequenceIndex), signature: JSON.stringify(next.sequence), baseline: { sequence: structuredClone(next.sequence), order: next.sequence.map((_, index) => index) } };
     next.answerVisible = false;
     runtimeLog(next, 'run-start', '진행 시작');
   });
 }
 
 function finishRun() {
-  if (!state.runtime.run.active || !confirm('진행을 종료하고 완료 기록을 초기화할까요? 슬라이드 구성은 유지됩니다.')) return;
-  update(next => { runtimeLog(next, 'run-end', '진행 종료'); stopTimerIn(next); next.runtime.run = defaultRuntime().run; next.runtime.mainResume = null; next.runtime.break = null; next.answerVisible = false; });
+  const message = state.runtime.run.baseline
+    ? '진행을 종료하고 시작 전 구성으로 돌아갈까요? 진행 중 삽입과 완료 기록이 초기화됩니다.'
+    : '진행을 종료하고 완료 기록을 초기화할까요? 이 진행은 시작 전 구성 기록이 없어 현재 순서를 유지합니다.';
+  if (!state.runtime.run.active || !confirm(message)) return;
+  update(next => {
+    runtimeLog(next, 'run-end', '진행 종료');
+    stopTimerIn(next);
+    const baseline = next.runtime.run.baseline;
+    if (baseline) {
+      const position = baseline.order[next.sequenceIndex];
+      next.sequence = structuredClone(baseline.sequence);
+      next.sequenceIndex = Number.isInteger(position) ? position : 0;
+    }
+    next.runtime.run = defaultRuntime().run;
+    next.runtime.mainResume = null;
+    next.runtime.break = null;
+    if (baseline) activateCurrentItem(next);
+    next.answerVisible = false;
+  }, { liveSequenceMove: true });
 }
 
 function specialRangeEnd(start) {
@@ -1475,15 +1492,18 @@ function startSpecialRound(index) {
     && !state.runtime.run.completed.includes(index) && (state.sequenceIndex < unit.start || state.sequenceIndex >= unit.end);
   if (canInsert) {
     return update(next => {
+      next.runtime.run.baseline ||= { sequence: structuredClone(next.sequence), order: next.sequence.map((_, position) => position) };
       const previousItems = next.sequence.slice();
       const current = previousItems[next.sequenceIndex];
       const completed = next.runtime.run.completed.map(position => previousItems[position]).filter(Boolean);
       const interrupted = !next.runtime.run.completed.includes(next.sequenceIndex);
       const remaining = getTimerRemaining(next.timer);
       const block = next.sequence.splice(unit.start, unit.end - unit.start);
+      const originalPositions = next.runtime.run.baseline.order.splice(unit.start, unit.end - unit.start);
       const currentIndex = next.sequence.indexOf(current);
       const insertion = currentIndex + 1;
       next.sequence.splice(insertion, 0, ...block);
+      next.runtime.run.baseline.order.splice(insertion, 0, ...originalPositions);
       next.runtime.run.completed = completed.map(item => next.sequence.indexOf(item)).filter(position => position >= 0);
       next.runtime.run.signature = JSON.stringify(next.sequence);
       next.runtime.mainResume = interrupted ? { index: currentIndex, questionId: current.questionId, remaining } : null;
@@ -2557,6 +2577,7 @@ function saveQuestion() {
   if (draft.id && data.id !== draft.id) {
     const rename = item => { if (item?.questionId === draft.id) item.questionId = data.id; };
     state.sequence.forEach(rename);
+    state.runtime.run.baseline?.sequence.forEach(rename);
     rename(state.runtime.mainResume);
     rename(state.runtime.overlay);
     for (const field of ['insertions', 'invalidQuestions', 'reserveUses']) state.runtime[field].forEach(rename);

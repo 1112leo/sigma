@@ -61,7 +61,7 @@ test('old paired layouts move main resume before the ordinary question without l
 
 test('live revival selection inserts the existing unit after the current main question and renumbers the follow-up', () => {
   const h=fixture();
-  h.run('const block=state.sequence.splice(1,4);state.sequence.splice(2,0,...block);activateSequence(state,0);startRun();toggleAnswer();startSpecialRound(2)');
+  h.run('const block=state.sequence.splice(1,4);state.sequence.splice(2,0,...block);ensureRequiredRoundScreens(state.sequence,state.questions);activateSequence(state,0);startRun();toggleAnswer();startSpecialRound(2)');
   assert.deepEqual(h.json('state.sequence.slice(0,6).map(item=>item.questionId||item.screenId)'),['M3','revival1-start','V1','main-resume','F9','M40']);
   assert.equal(h.run('state.runtime.run.active'),true);
   assert.ok(h.run('state.runtime.run.completed.includes(0)'));
@@ -75,4 +75,24 @@ test('live revival selection inserts the existing unit after the current main qu
   assert.equal(h.run('buildPublicState().question.title'),'03번');
   assert.equal(h.run('state.runtime.run.active'),true);
   assert.equal(h.run('state.sequence.filter(item=>item.questionId==="F9").length'),1);
+});
+
+test('ending a run restores the pre-run order after insertion and reload, including repeated practice runs', () => {
+  const h=fixture();
+  h.run('const block=state.sequence.splice(1,4);state.sequence.splice(2,0,...block);ensureRequiredRoundScreens(state.sequence,state.questions);initialSequence=JSON.stringify(state.sequence)');
+  for(let attempt=0;attempt<2;attempt++) {
+    h.run('goSequence(0);startRun();toggleAnswer();startSpecialRound(2);saveState();state=loadPrivateState()');
+    assert.equal(h.run('state.runtime.run.active'),true);
+    assert.notEqual(h.run('JSON.stringify(state.sequence)'),h.run('initialSequence'));
+    h.run('finishRun()');
+    assert.equal(h.run('JSON.stringify(state.sequence)'),h.run('initialSequence'));
+    assert.equal(h.run('state.runtime.run.active'),false);
+    assert.deepEqual(h.json('state.runtime.run.completed'),[]);
+  }
+});
+
+test('failed finish persistence preserves the live sequence and its restoration snapshot', () => {
+  const h=fixture();
+  h.run('const block=state.sequence.splice(1,4);state.sequence.splice(2,0,...block);ensureRequiredRoundScreens(state.sequence,state.questions);goSequence(0);startRun();toggleAnswer();startSpecialRound(2);before=JSON.stringify(state);localStorage.setItem=()=>{throw Error("quota")};finishRun()');
+  assert.equal(h.run('JSON.stringify(state)'),h.run('before'));
 });
