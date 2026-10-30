@@ -11,6 +11,9 @@ const PROJECTOR_SESSION_KEY = 'sigma-goldenbell-projector-session-v1';
 const IMAGE_DB_NAME = 'sigma-goldenbell-images-v1';
 const IMAGE_STORE_NAME = 'images';
 const CHANNEL_NAME = 'sigma-goldenbell-projector-v2';
+// Browser dialogs interrupt fullscreen. Confirmations are temporarily skipped.
+function confirm() { return true; }
+function alert(message) { toast(message); }
 const SCHEMA_VERSION = 3;
 const questionEnums = {
   category: ['basic', 'hard', 'revival', 'tiebreak'],
